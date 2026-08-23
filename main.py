@@ -1,10 +1,12 @@
 from typing import Optional
+from urllib.parse import quote
 import math
 import requests
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
+
 from sqlalchemy import (
     create_engine,
     Column,
@@ -38,10 +40,6 @@ SessionLocal = sessionmaker(
 Base = declarative_base()
 
 
-# =========================================================
-# DATABASE MODEL
-# =========================================================
-
 class PG(Base):
     __tablename__ = "pgs"
 
@@ -59,6 +57,7 @@ class PG(Base):
     food_available = Column(Boolean, default=True)
     food_type = Column(String, nullable=True)
     food_rating = Column(Float, default=0)
+
     cleaning_rating = Column(Float, default=0)
 
     water_available = Column(Boolean, default=True)
@@ -89,7 +88,7 @@ Base.metadata.create_all(bind=engine)
 
 
 # =========================================================
-# DATABASE MIGRATION
+# SAFE SQLITE MIGRATION
 # =========================================================
 
 def migrate_sqlite():
@@ -226,13 +225,13 @@ seed_demo_data()
 
 
 # =========================================================
-# FASTAPI APP
+# FASTAPI
 # =========================================================
 
 app = FastAPI(
     title="Smart PG API",
-    version="3.0.0",
-    description="Public Smart PG Management System API",
+    version="4.0.0",
+    description="Smart PG Management System",
 )
 
 
@@ -258,6 +257,7 @@ def get_db():
 
     try:
         yield db
+
     finally:
         db.close()
 
@@ -267,45 +267,66 @@ def get_db():
 # =========================================================
 
 class PGCreate(BaseModel):
+
     name: str
+
     property_type: str = "PG"
+
     pg_type: str = "Unisex"
+
     location: str
-    rent: int
+
+    rent: int = 0
 
     owner_name: str = "Owner"
+
     owner_phone: str = ""
 
     food_available: bool = True
+
     food_type: Optional[str] = "Veg"
+
     food_rating: float = 0
+
     cleaning_rating: float = 0
 
     water_available: bool = True
+
     wifi_available: bool = True
+
     cctv_available: bool = True
 
     latitude: Optional[float] = None
+
     longitude: Optional[float] = None
 
     ac_available: bool = False
+
     geyser_available: bool = False
+
     parking_available: bool = False
+
     power_backup: bool = False
+
     laundry_available: bool = False
+
     security_available: bool = False
 
     hygiene_rating: float = 0
 
     room_type: str = "Single"
+
     room_available: bool = True
 
     attached_washroom: bool = False
+
     common_washroom: bool = True
+
     washroom_cleaning_rating: float = 0
 
 
 class PGResponse(PGCreate):
+
     id: int
 
     model_config = ConfigDict(
@@ -314,32 +335,32 @@ class PGResponse(PGCreate):
 
 
 # =========================================================
-# HOME
+# BASIC ROUTES
 # =========================================================
 
 @app.get("/")
 def home():
+
     return {
         "message": "Smart PG API is running",
         "docs": "/docs",
         "status": "online",
+        "version": "4.0.0",
     }
 
-
-# =========================================================
-# HEALTH
-# =========================================================
 
 @app.get("/health")
 def health():
+
     return {
         "status": "healthy",
         "service": "Smart PG API",
+        "version": "4.0.0",
     }
 
 
 # =========================================================
-# GET ALL PG
+# DATABASE PG ROUTES
 # =========================================================
 
 @app.get(
@@ -359,9 +380,7 @@ def get_all_pg(
 
     if location:
         query = query.filter(
-            PG.location.ilike(
-                f"%{location}%"
-            )
+            PG.location.ilike(f"%{location}%")
         )
 
     if property_type and property_type.lower() != "all":
@@ -426,9 +445,11 @@ def get_pg(
     db: Session = Depends(get_db),
 ):
 
-    pg = db.query(PG).filter(
-        PG.id == pg_id
-    ).first()
+    pg = (
+        db.query(PG)
+        .filter(PG.id == pg_id)
+        .first()
+    )
 
     if not pg:
         raise HTTPException(
@@ -450,9 +471,11 @@ def update_pg(
     db: Session = Depends(get_db),
 ):
 
-    pg = db.query(PG).filter(
-        PG.id == pg_id
-    ).first()
+    pg = (
+        db.query(PG)
+        .filter(PG.id == pg_id)
+        .first()
+    )
 
     if not pg:
         raise HTTPException(
@@ -482,9 +505,11 @@ def delete_pg(
     db: Session = Depends(get_db),
 ):
 
-    pg = db.query(PG).filter(
-        PG.id == pg_id
-    ).first()
+    pg = (
+        db.query(PG)
+        .filter(PG.id == pg_id)
+        .first()
+    )
 
     if not pg:
         raise HTTPException(
@@ -502,46 +527,48 @@ def delete_pg(
 
 
 # =========================================================
-# OPENSTREETMAP
+# LOCATION / NOMINATIM
 # =========================================================
 
 HEADERS = {
-    "User-Agent": "SmartPG/3.0 student project"
+    "User-Agent": "SmartPG/4.0 student project"
 }
 
 
-# =========================================================
-# GEOCODING
-# =========================================================
-
 def geocode_location(location: str):
 
-    response = requests.get(
-        "https://nominatim.openstreetmap.org/search",
-        params={
-            "q": location,
-            "format": "jsonv2",
-            "limit": 1,
-        },
-        headers=HEADERS,
-        timeout=20,
-    )
+    try:
 
-    response.raise_for_status()
+        response = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={
+                "q": location,
+                "format": "jsonv2",
+                "limit": 1,
+            },
+            headers=HEADERS,
+            timeout=8,
+        )
 
-    data = response.json()
+        response.raise_for_status()
 
-    if not data:
+        data = response.json()
+
+        if not data:
+            return None
+
+        return (
+            float(data[0]["lat"]),
+            float(data[0]["lon"]),
+            data[0].get(
+                "display_name",
+                location
+            ),
+        )
+
+    except requests.RequestException:
+
         return None
-
-    return (
-        float(data[0]["lat"]),
-        float(data[0]["lon"]),
-        data[0].get(
-            "display_name",
-            location
-        ),
-    )
 
 
 # =========================================================
@@ -564,7 +591,7 @@ def reverse_location(
                 "format": "jsonv2",
             },
             headers=HEADERS,
-            timeout=20,
+            timeout=8,
         )
 
         response.raise_for_status()
@@ -582,7 +609,7 @@ def reverse_location(
 
         raise HTTPException(
             status_code=502,
-            detail=f"Location service error: {exc}"
+            detail=f"Location service error: {exc}",
         )
 
 
@@ -597,9 +624,10 @@ def calculate_distance(
     lon2,
 ):
 
-    earth_radius = 6371.0
+    radius = 6371.0
 
     p1 = math.radians(lat1)
+
     p2 = math.radians(lat2)
 
     dp = math.radians(
@@ -614,14 +642,23 @@ def calculate_distance(
         math.sin(dp / 2) ** 2
         +
         math.cos(p1)
-        * math.cos(p2)
-        * math.sin(dl / 2) ** 2
+        *
+        math.cos(p2)
+        *
+        math.sin(dl / 2) ** 2
+    )
+
+    a = min(
+        1,
+        max(0, a)
     )
 
     return (
-        earth_radius
-        * 2
-        * math.atan2(
+        radius
+        *
+        2
+        *
+        math.atan2(
             math.sqrt(a),
             math.sqrt(1 - a),
         )
@@ -629,212 +666,13 @@ def calculate_distance(
 
 
 # =========================================================
-# OSM SELECTOR BUILDER
-# =========================================================
-
-def build_osm_selectors(
-    latitude: float,
-    longitude: float,
-    radius: int,
-    property_type: str,
-):
-
-    wanted = (
-        property_type or "All"
-    ).strip()
-
-    if wanted not in {
-        "PG",
-        "Hostel",
-        "Co-Living",
-        "Flat",
-        "All",
-    }:
-        wanted = "All"
-
-    def around(extra):
-        return (
-            f'nwr(around:{radius},'
-            f'{latitude},{longitude})'
-            f'{extra};'
-        )
-
-    # -----------------------------------------------------
-    # PG
-    # -----------------------------------------------------
-
-    if wanted == "PG":
-
-        return (
-            around(
-                '["name"~"PG|P.G.|Paying Guest|'
-                'Paying-Guest|payingguest",i]'
-            )
-            +
-            around(
-                '["amenity"="hostel"]'
-            )
-            +
-            around(
-                '["tourism"="hostel"]'
-            )
-            +
-            around(
-                '["tourism"="guest_house"]'
-            )
-        )
-
-    # -----------------------------------------------------
-    # HOSTEL
-    # -----------------------------------------------------
-
-    if wanted == "Hostel":
-
-        return (
-            around(
-                '["tourism"="hostel"]'
-            )
-            +
-            around(
-                '["amenity"="hostel"]'
-            )
-            +
-            around(
-                '["tourism"="guest_house"]'
-            )
-            +
-            around(
-                '["name"~"Hostel|hostel",i]'
-            )
-        )
-
-    # -----------------------------------------------------
-    # CO-LIVING
-    # -----------------------------------------------------
-
-    if wanted == "Co-Living":
-
-        return (
-            around(
-                '["name"~"Co.?Living|'
-                'Coliving|Co Living",i]'
-            )
-            +
-            around(
-                '["name"~"shared living|'
-                'shared accommodation",i]'
-            )
-        )
-
-    # -----------------------------------------------------
-    # FLAT
-    # -----------------------------------------------------
-
-    if wanted == "Flat":
-
-        return (
-            around(
-                '["name"~"Flat|Apartment|'
-                'Apartments",i]'
-            )
-            +
-            around(
-                '["building"="apartments"]'
-            )
-        )
-
-    # -----------------------------------------------------
-    # ALL
-    # -----------------------------------------------------
-
-    return (
-        around(
-            '["name"~"PG|P.G.|Paying Guest|'
-            'Paying-Guest|payingguest|'
-            'Hostel|hostel|'
-            'Co.?Living|Coliving|'
-            'Flat|Apartment|Apartments",i]'
-        )
-        +
-        around(
-            '["tourism"="hostel"]'
-        )
-        +
-        around(
-            '["amenity"="hostel"]'
-        )
-        +
-        around(
-            '["tourism"="guest_house"]'
-        )
-        +
-        around(
-            '["building"="apartments"]'
-        )
-    )
-
-
-# =========================================================
-# DETECT PROPERTY TYPE
-# =========================================================
-
-def detect_property_type(tags, name):
-
-    tourism = (
-        tags.get("tourism")
-        or ""
-    ).lower()
-
-    amenity = (
-        tags.get("amenity")
-        or ""
-    ).lower()
-
-    building = (
-        tags.get("building")
-        or ""
-    ).lower()
-
-    lower_name = (
-        name or ""
-    ).lower()
-
-    if (
-        "co-living" in lower_name
-        or "coliving" in lower_name
-        or "co living" in lower_name
-        or "shared living" in lower_name
-    ):
-        return "Co-Living"
-
-    if (
-        "flat" in lower_name
-        or "apartment" in lower_name
-        or building == "apartments"
-    ):
-        return "Flat"
-
-    if (
-        tourism == "hostel"
-        or amenity == "hostel"
-        or "hostel" in lower_name
-    ):
-        return "Hostel"
-
-    if tourism == "guest_house":
-        return "Hostel"
-
-    return "PG"
-
-
-# =========================================================
-# REAL OSM SEARCH
+# REAL OPENSTREETMAP SEARCH
 # =========================================================
 
 @app.get("/search-real-pg")
 def search_real_pg(
     location: str,
-    property_type: str = "All",
+    property_type: str = "PG",
 ):
 
     location = location.strip()
@@ -843,25 +681,14 @@ def search_real_pg(
 
         raise HTTPException(
             status_code=400,
-            detail="Location is required"
+            detail="Location is required",
         )
 
     # -----------------------------------------------------
-    # GEOCODE
+    # GEOCODING
     # -----------------------------------------------------
 
-    try:
-
-        geo = geocode_location(
-            location
-        )
-
-    except requests.RequestException as exc:
-
-        raise HTTPException(
-            status_code=502,
-            detail=f"Location service error: {exc}"
-        )
+    geo = geocode_location(location)
 
     if not geo:
 
@@ -871,36 +698,88 @@ def search_real_pg(
             "results": [],
             "source": "OpenStreetMap",
             "message": (
-                "Location was not found."
+                "Location not found or "
+                "map service is temporarily unavailable."
             ),
         }
 
     latitude, longitude, display_name = geo
 
     # -----------------------------------------------------
-    # SEARCH RADIUS
+    # PROPERTY TYPE
     # -----------------------------------------------------
 
-    radius = 15000
+    wanted = (
+        property_type or "PG"
+    ).strip()
 
-    selectors = build_osm_selectors(
-        latitude,
-        longitude,
-        radius,
-        property_type,
-    )
+    allowed = {
+        "PG",
+        "Hostel",
+        "Co-Living",
+        "Flat",
+        "All",
+    }
+
+    if wanted not in allowed:
+        wanted = "PG"
+
+    # Smaller radius = faster search
+    radius = 5000
+
+    # -----------------------------------------------------
+    # OSM SELECTORS
+    # -----------------------------------------------------
+
+    if wanted == "Hostel":
+
+        selectors = f"""
+        nwr(around:{radius},{latitude},{longitude})["tourism"="hostel"];
+        nwr(around:{radius},{latitude},{longitude})["amenity"="hostel"];
+        nwr(around:{radius},{latitude},{longitude})["tourism"="guest_house"];
+        """
+
+    elif wanted == "Co-Living":
+
+        selectors = f"""
+        nwr(around:{radius},{latitude},{longitude})["name"~"co.?living|coliving",i];
+        """
+
+    elif wanted == "Flat":
+
+        selectors = f"""
+        nwr(around:{radius},{latitude},{longitude})["building"="apartments"];
+        nwr(around:{radius},{latitude},{longitude})["name"~"apartment|residency|residential",i];
+        """
+
+    elif wanted == "All":
+
+        selectors = f"""
+        nwr(around:{radius},{latitude},{longitude})["tourism"="hostel"];
+        nwr(around:{radius},{latitude},{longitude})["amenity"="hostel"];
+        nwr(around:{radius},{latitude},{longitude})["tourism"="guest_house"];
+        nwr(around:{radius},{latitude},{longitude})["name"~"PG|P.G.|paying guest|hostel|co.?living|coliving|apartment|residency",i];
+        """
+
+    else:
+
+        selectors = f"""
+        nwr(around:{radius},{latitude},{longitude})["name"~"PG|P.G.|paying guest|paying-guest",i];
+        nwr(around:{radius},{latitude},{longitude})["tourism"="guest_house"];
+        nwr(around:{radius},{latitude},{longitude})["name"~"residency|residence|living|stay|homes",i];
+        """
 
     # -----------------------------------------------------
     # OVERPASS QUERY
     # -----------------------------------------------------
 
     query = f"""
-[out:json][timeout:45];
-(
-{selectors}
-);
-out center tags;
-"""
+    [out:json][timeout:8];
+    (
+        {selectors}
+    );
+    out center tags;
+    """
 
     # -----------------------------------------------------
     # OVERPASS SERVERS
@@ -909,16 +788,9 @@ out center tags;
     overpass_urls = [
         "https://overpass-api.de/api/interpreter",
         "https://overpass.kumi.systems/api/interpreter",
-        "https://overpass.private.coffee/api/interpreter",
-        "https://overpass.nchc.org.tw/api/interpreter",
     ]
 
     data = None
-    errors = []
-
-    # -----------------------------------------------------
-    # TRY EVERY SERVER
-    # -----------------------------------------------------
 
     for url in overpass_urls:
 
@@ -929,31 +801,23 @@ out center tags;
                 data={
                     "data": query
                 },
-                timeout=50,
                 headers=HEADERS,
+                timeout=10,
             )
 
             response.raise_for_status()
 
             data = response.json()
 
-            if isinstance(data, dict):
+            if data is not None:
                 break
 
-        except requests.RequestException as exc:
+        except requests.RequestException:
 
-            errors.append(
-                f"{url}: {exc}"
-            )
-
-        except ValueError as exc:
-
-            errors.append(
-                f"{url}: invalid JSON ({exc})"
-            )
+            continue
 
     # -----------------------------------------------------
-    # NO SERVER AVAILABLE
+    # NO RESPONSE
     # -----------------------------------------------------
 
     if data is None:
@@ -966,17 +830,17 @@ out center tags;
             "results": [],
             "source": "OpenStreetMap",
             "message": (
-                "OpenStreetMap is temporarily busy. "
-                "Please press Search again."
+                "Map service is temporarily busy. "
+                "Please try again."
             ),
-            "service_errors": errors[-2:],
         }
 
     # -----------------------------------------------------
-    # PROCESS OSM RESULTS
+    # RESULTS
     # -----------------------------------------------------
 
     results = []
+
     seen = set()
 
     for element in data.get(
@@ -997,11 +861,8 @@ out center tags;
         if not name:
             continue
 
-        # -------------------------------------------------
-        # LAT/LON
-        # -------------------------------------------------
-
         lat = element.get("lat")
+
         lon = element.get("lon")
 
         if lat is None or lon is None:
@@ -1012,12 +873,14 @@ out center tags;
             )
 
             lat = center.get("lat")
+
             lon = center.get("lon")
 
         if lat is None or lon is None:
             continue
 
         lat = float(lat)
+
         lon = float(lon)
 
         # -------------------------------------------------
@@ -1034,18 +897,17 @@ out center tags;
         ]
 
         address = ", ".join(
-            str(value).strip()
-            for value in address_parts
-            if value
+            str(x).strip()
+            for x in address_parts
+            if x
         )
 
         # -------------------------------------------------
-        # DUPLICATE
+        # DUPLICATES
         # -------------------------------------------------
 
         key = (
             name.lower(),
-            address.lower(),
             round(lat, 5),
             round(lon, 5),
         )
@@ -1056,36 +918,91 @@ out center tags;
         seen.add(key)
 
         # -------------------------------------------------
-        # PROPERTY TYPE
+        # CATEGORY
         # -------------------------------------------------
 
-        detected_type = detect_property_type(
-            tags,
-            name
+        lower_name = name.lower()
+
+        tourism = (
+            tags.get("tourism")
+            or ""
+        ).lower()
+
+        amenity = (
+            tags.get("amenity")
+            or ""
+        ).lower()
+
+        if (
+            "hostel" in lower_name
+            or tourism == "hostel"
+            or amenity == "hostel"
+        ):
+
+            detected_type = "Hostel"
+
+        elif (
+            "co-living" in lower_name
+            or "coliving" in lower_name
+            or "co living" in lower_name
+        ):
+
+            detected_type = "Co-Living"
+
+        elif (
+            "flat" in lower_name
+            or "apartment" in lower_name
+        ):
+
+            detected_type = "Flat"
+
+        elif tourism == "guest_house":
+
+            detected_type = "Hostel"
+
+        else:
+
+            detected_type = "PG"
+
+        # -------------------------------------------------
+        # IMAGE
+        # -------------------------------------------------
+
+        image = (
+            tags.get("image")
+            or tags.get("image:url")
+            or tags.get("contact:image")
+            or ""
         )
 
-        # -------------------------------------------------
-        # SELECTED CATEGORY FILTER
-        # -------------------------------------------------
+        # Wikimedia Commons
+        if (
+            not image
+            and tags.get(
+                "wikimedia_commons"
+            )
+        ):
 
-        wanted = (
-            property_type or "All"
-        ).strip()
+            commons = (
+                tags[
+                    "wikimedia_commons"
+                ]
+                .replace(
+                    "File:",
+                    ""
+                )
+                .strip()
+                .replace(
+                    " ",
+                    "_"
+                )
+            )
 
-        if wanted in {
-            "PG",
-            "Hostel",
-            "Co-Living",
-            "Flat",
-        }:
-
-            # PG search is intentionally flexible:
-            # OSM often stores PG-like accommodation
-            # as hostel/guest-house.
-            if wanted != "PG":
-
-                if detected_type != wanted:
-                    continue
+            image = (
+                "https://commons.wikimedia.org/"
+                "wiki/Special:FilePath/"
+                + quote(commons)
+            )
 
         # -------------------------------------------------
         # WEBSITE
@@ -1108,44 +1025,6 @@ out center tags;
         )
 
         # -------------------------------------------------
-        # IMAGE
-        # -----------------------------------------------------
-
-        image = (
-            tags.get("image")
-            or tags.get("image:url")
-            or tags.get("contact:image")
-            or ""
-        )
-
-        # Wikimedia image
-        if (
-            not image
-            and tags.get("wikimedia_commons")
-        ):
-
-            commons_file = (
-                tags.get(
-                    "wikimedia_commons"
-                )
-                .replace(
-                    "File:",
-                    ""
-                )
-                .strip()
-                .replace(
-                    " ",
-                    "_"
-                )
-            )
-
-            image = (
-                "https://commons.wikimedia.org/wiki/"
-                "Special:FilePath/"
-                + commons_file
-            )
-
-        # -------------------------------------------------
         # FOOD
         # -------------------------------------------------
 
@@ -1154,26 +1033,35 @@ out center tags;
             or ""
         )
 
-        food_available = bool(
-            cuisine
-            or tags.get("restaurant")
-            or tags.get("food")
-        )
-
         # -------------------------------------------------
         # WIFI
         # -------------------------------------------------
 
-        internet_access = (
-            tags.get("internet_access")
-            or ""
-        ).lower()
+        wifi = (
+            tags.get(
+                "internet_access"
+            ) == "wlan"
+        )
 
-        wifi_available = (
-            internet_access in {
-                "wlan",
-                "yes",
-            }
+        # -------------------------------------------------
+        # MAP URL
+        # -------------------------------------------------
+
+        map_url = (
+            "https://www.openstreetmap.org/"
+            f"?mlat={lat}"
+            f"&mlon={lon}"
+            f"#map=18/{lat}/{lon}"
+        )
+
+        # -------------------------------------------------
+        # DIRECTIONS
+        # -------------------------------------------------
+
+        directions_url = (
+            "https://www.google.com/maps/search/"
+            "?api=1"
+            f"&query={lat},{lon}"
         )
 
         # -------------------------------------------------
@@ -1188,95 +1076,88 @@ out center tags;
         )
 
         # -------------------------------------------------
-        # RESULT
+        # FINAL RESULT
         # -------------------------------------------------
 
-        results.append({
+        results.append(
+            {
+                "id": (
+                    f"osm-"
+                    f"{element.get('type')}-"
+                    f"{element.get('id')}"
+                ),
 
-            "id": (
-                f"osm-"
-                f"{element.get('type')}-"
-                f"{element.get('id')}"
-            ),
+                "name": name,
 
-            "name": name,
+                "property_type": detected_type,
 
-            "property_type": detected_type,
+                "pg_type": "Unisex",
 
-            "pg_type": (
-                tags.get("gender")
-                or "Unisex"
-            ),
+                "location": (
+                    address
+                    or display_name
+                ),
 
-            "location": (
-                address
-                or display_name
-            ),
+                "rent": None,
 
-            "rent": None,
+                "owner_name":
+                    "OpenStreetMap listing",
 
-            "owner_name": (
-                tags.get("operator")
-                or "OpenStreetMap listing"
-            ),
+                "owner_phone":
+                    phone,
 
-            "owner_phone": phone,
+                "food_available":
+                    bool(cuisine),
 
-            "food_available": food_available,
+                "food_type":
+                    cuisine
+                    or "Not specified",
 
-            "food_type": (
-                cuisine
-                or "Not specified"
-            ),
+                "food_rating": 0,
 
-            "food_rating": 0,
+                "cleaning_rating": 0,
 
-            "cleaning_rating": 0,
+                "water_available": False,
 
-            "water_available": False,
+                "wifi_available":
+                    wifi,
 
-            "wifi_available": wifi_available,
+                "cctv_available": False,
 
-            "cctv_available": False,
+                "latitude": lat,
 
-            "latitude": lat,
+                "longitude": lon,
 
-            "longitude": lon,
+                "website":
+                    website,
 
-            "website": website,
+                "image":
+                    image,
 
-            "image": image,
+                "source":
+                    "OpenStreetMap",
 
-            "source": "OpenStreetMap",
+                "distance_km":
+                    round(
+                        distance,
+                        2
+                    ),
 
-            "distance_km": round(
-                distance,
-                2
-            ),
+                "map_url":
+                    map_url,
 
-            "map_url": (
-                "https://www.openstreetmap.org/"
-                f"?mlat={lat}&mlon={lon}"
-                f"#map=18/{lat}/{lon}"
-            ),
-
-            "directions_url": (
-                "https://www.google.com/maps/"
-                "search/?api=1"
-                f"&query={lat},{lon}"
-            ),
-
-        })
+                "directions_url":
+                    directions_url,
+            }
+        )
 
     # -----------------------------------------------------
-    # SORT NEAREST FIRST
+    # SORT
     # -----------------------------------------------------
 
     results.sort(
-        key=lambda item: item.get(
-            "distance_km",
-            999999
-        )
+        key=lambda item:
+            item["distance_km"]
     )
 
     # -----------------------------------------------------
@@ -1284,18 +1165,22 @@ out center tags;
     # -----------------------------------------------------
 
     return {
-
         "location": location,
 
-        "latitude": latitude,
+        "latitude":
+            latitude,
 
-        "longitude": longitude,
+        "longitude":
+            longitude,
 
-        "count": len(results),
+        "count":
+            len(results),
 
-        "results": results[:200],
+        "results":
+            results[:100],
 
-        "source": "OpenStreetMap",
+        "source":
+            "OpenStreetMap",
 
         "message": (
             "Real mapped accommodation loaded successfully."
@@ -1303,7 +1188,6 @@ out center tags;
             else
             "No mapped accommodation found in this area."
         ),
-
     }
 
 
@@ -1316,20 +1200,25 @@ def nearby_pgs(
     latitude: float,
     longitude: float,
     radius_km: float = 10,
+    property_type: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
 
     results = []
 
-    all_pgs = db.query(
-        PG
-    ).all()
-
-    for pg in all_pgs:
+    for pg in db.query(PG).all():
 
         if (
             pg.latitude is None
             or pg.longitude is None
+        ):
+            continue
+
+        if (
+            property_type
+            and property_type.lower() != "all"
+            and pg.property_type.lower()
+            != property_type.lower()
         ):
             continue
 
@@ -1342,57 +1231,53 @@ def nearby_pgs(
 
         if distance <= radius_km:
 
-            results.append({
-
-                "id": pg.id,
-
-                "name": pg.name,
-
-                "property_type":
-                    pg.property_type,
-
-                "pg_type":
-                    pg.pg_type,
-
-                "location":
-                    pg.location,
-
-                "rent":
-                    pg.rent,
-
-                "latitude":
-                    pg.latitude,
-
-                "longitude":
-                    pg.longitude,
-
-                "distance_km":
-                    round(
-                        distance,
-                        2
-                    ),
-            })
+            results.append(
+                {
+                    "id": pg.id,
+                    "name": pg.name,
+                    "property_type":
+                        pg.property_type,
+                    "pg_type":
+                        pg.pg_type,
+                    "location":
+                        pg.location,
+                    "rent":
+                        pg.rent,
+                    "latitude":
+                        pg.latitude,
+                    "longitude":
+                        pg.longitude,
+                    "distance_km":
+                        round(
+                            distance,
+                            2
+                        ),
+                }
+            )
 
     results.sort(
         key=lambda x:
-        x["distance_km"]
+            x["distance_km"]
     )
 
     return {
-        "count": len(results),
-        "results": results[:100],
+        "count":
+            len(results),
+
+        "results":
+            results[:200],
     }
 
 
 # =========================================================
-# NEARBY SEARCH BY LOCATION
+# NEARBY SEARCH
 # =========================================================
 
 @app.get("/nearby-pgs/search")
 def nearby_pg_search(
     location: str,
     radius_km: float = 10,
-    property_type: str = "All",
+    property_type: str = "PG",
 ):
 
     return search_real_pg(
@@ -1402,7 +1287,7 @@ def nearby_pg_search(
 
 
 # =========================================================
-# START SERVER
+# RUN LOCALLY
 # =========================================================
 
 if __name__ == "__main__":
