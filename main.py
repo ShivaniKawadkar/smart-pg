@@ -318,12 +318,16 @@ def search_real_pg(location: str, property_type: str = "PG"):
     latitude, longitude, display_name = geo
 
     # Search only the selected category so the response is faster.
-    radius = 3500
+    radius = 7000
     wanted = (property_type or "PG").strip()
     if wanted not in {"PG", "Hostel", "Co-Living", "Flat", "All"}:
         wanted = "PG"
     if wanted == "PG":
-        selectors = f'nwr(around:{radius},{latitude},{longitude})["name"~"PG|P.G.|Paying Guest",i];'
+    selectors = (
+        f'nwr(around:{radius},{latitude},{longitude})["name"~"PG|P.G.|Paying Guest|Paying guest|PG Accommodation",i];'
+        f'nwr(around:{radius},{latitude},{longitude})["amenity"="lodging"];'
+        f'nwr(around:{radius},{latitude},{longitude})["tourism"="guest_house"];'
+    )
     elif wanted == "Hostel":
         selectors = (
             f'nwr(around:{radius},{latitude},{longitude})["tourism"="hostel"];\n'
@@ -584,8 +588,12 @@ def nearby_pgs(
 def nearby_pg_search(
     location: str,
     radius_km: float = 10,
+    property_type: str = "PG",
 ):
-    return search_real_pg(location)
+    return search_real_pg(
+        location=location,
+        property_type=property_type,
+    )
 
 
 if __name__ == "__main__":
