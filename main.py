@@ -323,27 +323,24 @@ def search_real_pg(location: str, property_type: str = "PG"):
     if wanted not in {"PG", "Hostel", "Co-Living", "Flat", "All"}:
         wanted = "PG"
     if wanted == "PG":
+    selectors = f'nwr(around:{radius},{latitude},{longitude})["name"~"PG|P.G.|Paying Guest",i];'
+elif wanted == "Hostel":
     selectors = (
-        f'nwr(around:{radius},{latitude},{longitude})["name"~"PG|P.G.|Paying Guest|Paying guest|PG Accommodation",i];'
-        f'nwr(around:{radius},{latitude},{longitude})["amenity"="lodging"];'
+        f'nwr(around:{radius},{latitude},{longitude})["tourism"="hostel"];'
+        f'nwr(around:{radius},{latitude},{longitude})["amenity"="hostel"];'
         f'nwr(around:{radius},{latitude},{longitude})["tourism"="guest_house"];'
     )
-    elif wanted == "Hostel":
-        selectors = (
-            f'nwr(around:{radius},{latitude},{longitude})["tourism"="hostel"];\n'
-            f'      nwr(around:{radius},{latitude},{longitude})["amenity"="hostel"];\n'
-            f'      nwr(around:{radius},{latitude},{longitude})["tourism"="guest_house"];'
-        )
-    elif wanted == "Co-Living":
-        selectors = f'nwr(around:{radius},{latitude},{longitude})["name"~"Co.?Living|Coliving",i];'
-    elif wanted == "Flat":
-        selectors = f'nwr(around:{radius},{latitude},{longitude})["name"~"Flat|Apartment",i];'
-    else:
-        selectors = (
-            f'nwr(around:{radius},{latitude},{longitude})["tourism"="hostel"];\n'
-            f'      nwr(around:{radius},{latitude},{longitude})["tourism"="guest_house"];\n'
-            f'      nwr(around:{radius},{latitude},{longitude})["amenity"="hostel"];\n'
-            f'      nwr(around:{radius},{latitude},{longitude})["name"~"PG|P.G.|Paying Guest|Co.?Living|Coliving|Flat|Apartment",i];'
+elif wanted == "Co-Living":
+    selectors = f'nwr(around:{radius},{latitude},{longitude})["name"~"Co.?Living|Coliving",i];'
+elif wanted == "Flat":
+    selectors = f'nwr(around:{radius},{latitude},{longitude})["name"~"Flat|Apartment",i];'
+else:
+    selectors = (
+        f'nwr(around:{radius},{latitude},{longitude})["tourism"="hostel"];'
+        f'nwr(around:{radius},{latitude},{longitude})["tourism"="guest_house"];'
+        f'nwr(around:{radius},{latitude},{longitude})["amenity"="hostel"];'
+        f'nwr(around:{radius},{latitude},{longitude})["name"~"PG|P.G.|Paying Guest|Co.?Living|Coliving|Flat|Apartment",i];'
+    )
         )
     query = f"""
     [out:json][timeout:12];
