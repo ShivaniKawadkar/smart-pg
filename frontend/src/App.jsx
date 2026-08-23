@@ -5,7 +5,7 @@ import {
   Star, LocateFixed, Phone, Globe, Image as ImageIcon
 } from "lucide-react";
 
-https://smart-pg-api.onrender.com
+const API_URL = "https://smart-pg-api.onrender.com";
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org";
 const OVERPASS_URLS = [
   "https://overpass-api.de/api/interpreter",
