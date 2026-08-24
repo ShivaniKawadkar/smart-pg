@@ -1,31 +1,41 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 
-const API_URL = "https://smart-pg-apkp.onrender.com";
+/*
+=========================================================
+SMART PG - LIVE FRONTEND
+=========================================================
+IMPORTANT:
+Actual deployed backend:
+https://smart-pg-backend-sriy.onrender.com
+=========================================================
+*/
+
+const API_URL = "https://smart-pg-backend-sriy.onrender.com";
 
 const CATEGORIES = [
   {
     key: "PG",
     title: "PG",
     subtitle: "Paying Guest",
-    icon: "ðŸ ",
+    icon: "🏠",
   },
   {
     key: "Hostel",
     title: "Hostel",
     subtitle: "Hostels",
-    icon: "ðŸ¨",
+    icon: "🏨",
   },
   {
     key: "Co-Living",
     title: "Co-Living",
     subtitle: "Shared living",
-    icon: "ðŸ¢",
+    icon: "🏢",
   },
   {
     key: "Flat",
     title: "Flat",
-    subtitle: "Flats",
-    icon: "ðŸ™ï¸",
+    subtitle: "Apartments",
+    icon: "🏙️",
   },
 ];
 
@@ -43,7 +53,9 @@ function App() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  const [user, setUser] = useState("Shivani");
+  const [user, setUser] = useState(
+    () => localStorage.getItem("smart_pg_user") || "Shivani"
+  );
 
   const [pgType, setPgType] = useState("All");
   const [foodType, setFoodType] = useState("All");
@@ -59,230 +71,36 @@ function App() {
   const [complaintMessage, setComplaintMessage] = useState("");
 
   // =====================================================
-  // LOAD USER
-  // =====================================================
-
-  useEffect(() => {
-    try {
-      const savedUser = localStorage.getItem("smart_pg_user");
-
-      if (savedUser) {
-        setUser(savedUser);
-      }
-    } catch (err) {
-      console.log(err);
-    }
-  }, []);
-
-  // =====================================================
-  // CATEGORY COUNTS
-  // =====================================================
-
-  const categoryCounts = useMemo(() => {
-    const counts = {
-      PG: 0,
-      Hostel: 0,
-      "Co-Living": 0,
-      Flat: 0,
-    };
-
-    properties.forEach((item) => {
-      const type = String(item?.property_type || "").trim();
-
-      if (type === "PG") {
-        counts.PG += 1;
-      }
-
-      if (type === "Hostel") {
-        counts.Hostel += 1;
-      }
-
-      if (type === "Co-Living") {
-        counts["Co-Living"] += 1;
-      }
-
-      if (type === "Flat") {
-        counts.Flat += 1;
-      }
-    });
-
-    return counts;
-  }, [properties]);
-
-  // =====================================================
-  // FETCH WITH TIMEOUT
+  // TIMEOUT FETCH
   // =====================================================
 
   const fetchWithTimeout = async (
     url,
     options = {},
-    timeout = 15000
+    timeout = 20000
   ) => {
     const controller = new AbortController();
 
-    const timeoutId = setTimeout(() => {
+    const timer = setTimeout(() => {
       controller.abort();
     }, timeout);
 
     try {
-      const response = await fetch(url, {
+      return await fetch(url, {
         ...options,
         signal: controller.signal,
       });
-
-      return response;
     } finally {
-      clearTimeout(timeoutId);
+      clearTimeout(timer);
     }
   };
 
   // =====================================================
-  // GOOGLE MAPS URL
-  // =====================================================
-
-  const getGoogleMapsUrl = (
-    place,
-    category = selectedCategory
-  ) => {
-    const search = String(place || "").trim();
-
-    if (!search) {
-      return null;
-    }
-
-    let categoryText = "PG paying guest";
-
-    if (category === "Hostel") {
-      categoryText = "hostel";
-    } else if (category === "Co-Living") {
-      categoryText = "co living";
-    } else if (category === "Flat") {
-      categoryText = "flat apartment";
-    }
-
-    const query = `${categoryText} near ${search}`;
-
-    return (
-      "https://www.google.com/maps/search/?api=1&query=" +
-      encodeURIComponent(query)
-    );
-  };
-
-  // =====================================================
-  // OPEN GOOGLE MAPS
-  // ONLY WHEN USER CLICKS MAP BUTTON
-  // =====================================================
-
-  const openGoogleMaps = (
-    place = location,
-    category = selectedCategory
-  ) => {
-    const search = String(place || "").trim();
-
-    if (!search) {
-      alert("Please enter a location first.");
-      return false;
-    }
-
-    const url = getGoogleMapsUrl(search, category);
-
-    if (!url) {
-      return false;
-    }
-
-    console.log("OPENING GOOGLE MAPS:", url);
-
-    const mapWindow = window.open(
-      url,
-      "_blank",
-      "noopener,noreferrer"
-    );
-
-    if (!mapWindow) {
-      window.location.href = url;
-    }
-
-    return true;
-  };
-
-  // =====================================================
-  // OPEN MAP FOR PROPERTY
-  // =====================================================
-
-  const openMapForProperty = (item) => {
-    // 1. Backend directions URL
-    if (item?.directions_url) {
-      const mapWindow = window.open(
-        item.directions_url,
-        "_blank",
-        "noopener,noreferrer"
-      );
-
-      if (!mapWindow) {
-        window.location.href = item.directions_url;
-      }
-
-      return;
-    }
-
-    // 2. Latitude + Longitude
-    if (
-      item?.latitude !== undefined &&
-      item?.longitude !== undefined &&
-      item?.latitude !== null &&
-      item?.longitude !== null &&
-      item?.latitude !== "" &&
-      item?.longitude !== ""
-    ) {
-      const url =
-        "https://www.google.com/maps/search/?api=1&query=" +
-        encodeURIComponent(
-          `${item.latitude},${item.longitude}`
-        );
-
-      const mapWindow = window.open(
-        url,
-        "_blank",
-        "noopener,noreferrer"
-      );
-
-      if (!mapWindow) {
-        window.location.href = url;
-      }
-
-      return;
-    }
-
-    // 3. Backend Google Maps URL
-    if (item?.google_maps_url) {
-      const mapWindow = window.open(
-        item.google_maps_url,
-        "_blank",
-        "noopener,noreferrer"
-      );
-
-      if (!mapWindow) {
-        window.location.href = item.google_maps_url;
-      }
-
-      return;
-    }
-
-    // 4. Search property location
-    openGoogleMaps(
-      item?.location || searchLocation || location,
-      item?.property_type || selectedCategory
-    );
-  };
-
-  // =====================================================
-  // NORMALIZE API DATA
+  // NORMALIZE API RESPONSE
   // =====================================================
 
   const normalizeResults = (data) => {
-    if (Array.isArray(data)) {
-      return data;
-    }
+    if (Array.isArray(data)) return data;
 
     if (Array.isArray(data?.results)) {
       return data.results;
@@ -300,34 +118,378 @@ function App() {
   };
 
   // =====================================================
+  // NORMALIZE PROPERTY TYPE
+  // =====================================================
+
+  const normalizeType = (value) => {
+    const text = String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]/g, " ");
+
+    if (
+      text.includes("co living") ||
+      text.includes("coliving")
+    ) {
+      return "co-living";
+    }
+
+    if (text.includes("hostel")) {
+      return "hostel";
+    }
+
+    if (
+      text.includes("flat") ||
+      text.includes("apartment")
+    ) {
+      return "flat";
+    }
+
+    if (
+      text.includes("pg") ||
+      text.includes("paying guest")
+    ) {
+      return "pg";
+    }
+
+    return text;
+  };
+
+  // =====================================================
   // FILTER CATEGORY
   // =====================================================
 
   const filterCategory = (results, category) => {
     return results.filter((item) => {
-      const type = String(
-        item?.property_type || category
-      )
-        .trim()
-        .toLowerCase();
-
-      const wanted = String(category)
-        .trim()
-        .toLowerCase();
-
-      // If backend does not provide property_type,
-      // keep the result because the endpoint was already
-      // searched for the selected category.
       if (!item?.property_type) {
         return true;
       }
 
-      return type === wanted;
+      const actual = normalizeType(item.property_type);
+      const wanted = normalizeType(category);
+
+      return actual === wanted;
     });
   };
 
   // =====================================================
-  // SEARCH LOCATION
+  // REMOVE DUPLICATES
+  // =====================================================
+
+  const removeDuplicates = (results) => {
+    const map = new Map();
+
+    results.forEach((item, index) => {
+      const key = [
+        item?.id,
+        item?.osm_id,
+        item?.name,
+        item?.latitude,
+        item?.longitude,
+        item?.location,
+        index,
+      ]
+        .filter(Boolean)
+        .join("|");
+
+      if (!map.has(key)) {
+        map.set(key, item);
+      }
+    });
+
+    return Array.from(map.values());
+  };
+
+  // =====================================================
+  // GOOGLE MAPS
+  // =====================================================
+
+  const getGoogleMapsUrl = (
+    place,
+    category = selectedCategory
+  ) => {
+    const search = String(place || "").trim();
+
+    if (!search) return null;
+
+    let keyword = "PG paying guest";
+
+    if (category === "Hostel") {
+      keyword = "hostel";
+    }
+
+    if (category === "Co-Living") {
+      keyword = "co living coliving";
+    }
+
+    if (category === "Flat") {
+      keyword = "flat apartment";
+    }
+
+    const query = `${keyword} near ${search}`;
+
+    return (
+      "https://www.google.com/maps/search/?api=1&query=" +
+      encodeURIComponent(query)
+    );
+  };
+
+  const openGoogleMaps = (
+    place = location,
+    category = selectedCategory
+  ) => {
+    const url = getGoogleMapsUrl(place, category);
+
+    if (!url) {
+      alert("Please enter a location first.");
+      return;
+    }
+
+    window.open(url, "_blank");
+  };
+
+  // =====================================================
+  // PROPERTY MAP
+  // =====================================================
+
+  const openMapForProperty = (item) => {
+    if (item?.directions_url) {
+      window.open(item.directions_url, "_blank");
+      return;
+    }
+
+    if (
+      item?.latitude !== undefined &&
+      item?.longitude !== undefined &&
+      item?.latitude !== null &&
+      item?.longitude !== null &&
+      item?.latitude !== "" &&
+      item?.longitude !== ""
+    ) {
+      const url =
+        "https://www.google.com/maps/search/?api=1&query=" +
+        encodeURIComponent(
+          `${item.latitude},${item.longitude}`
+        );
+
+      window.open(url, "_blank");
+      return;
+    }
+
+    if (item?.google_maps_url) {
+      window.open(item.google_maps_url, "_blank");
+      return;
+    }
+
+    openGoogleMaps(
+      item?.location || searchLocation || location,
+      item?.property_type || selectedCategory
+    );
+  };
+
+  // =====================================================
+  // CREATE SEARCH KEYWORDS
+  // =====================================================
+
+  const createSearchKeywords = (place, category) => {
+    const original = String(place || "").trim();
+
+    if (!original) return [];
+
+    const keywords = [];
+
+    const add = (value) => {
+      const clean = String(value || "").trim();
+
+      if (
+        clean &&
+        !keywords.some(
+          (x) => x.toLowerCase() === clean.toLowerCase()
+        )
+      ) {
+        keywords.push(clean);
+      }
+    };
+
+    // Original search
+    add(original);
+
+    // Remove extra spaces
+    add(original.replace(/\s+/g, " "));
+
+    // Remove common separators
+    add(
+      original
+        .replace(/,/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+    );
+
+    /*
+      Example:
+      "Koramangala, Bangalore"
+
+      Searches:
+      Koramangala, Bangalore
+      Koramangala Bangalore
+      Koramangala
+      Bangalore
+    */
+
+    const parts = original
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+
+    parts.forEach(add);
+
+    /*
+      If user enters:
+      "HSR Layout Bangalore"
+    */
+
+    const words = original
+      .split(/\s+/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+
+    if (words.length > 1) {
+      add(words.slice(0, -1).join(" "));
+      add(words.slice(1).join(" "));
+    }
+
+    // Add category keyword for real search
+    if (category === "PG") {
+      add(`${original} PG`);
+      add(`${original} paying guest`);
+    }
+
+    if (category === "Hostel") {
+      add(`${original} hostel`);
+    }
+
+    if (category === "Co-Living") {
+      add(`${original} co living`);
+      add(`${original} coliving`);
+    }
+
+    if (category === "Flat") {
+      add(`${original} flat`);
+      add(`${original} apartment`);
+    }
+
+    return keywords.slice(0, 10);
+  };
+
+  // =====================================================
+  // SMART DATABASE SEARCH
+  // =====================================================
+
+  const searchDatabase = async (place, category) => {
+    const url =
+      `${API_URL}/pg?location=${encodeURIComponent(place)}` +
+      `&property_type=${encodeURIComponent(category)}`;
+
+    console.log("DATABASE SEARCH:", url);
+
+    try {
+      const response = await fetchWithTimeout(
+        url,
+        {
+          headers: {
+            Accept: "application/json",
+          },
+        },
+        12000
+      );
+
+      console.log(
+        "DATABASE STATUS:",
+        response.status
+      );
+
+      if (!response.ok) {
+        return [];
+      }
+
+      const data = await response.json();
+
+      let results = normalizeResults(data);
+
+      results = filterCategory(
+        results,
+        category
+      );
+
+      return results;
+    } catch (error) {
+      console.error(
+        "DATABASE SEARCH ERROR:",
+        error
+      );
+
+      return [];
+    }
+  };
+
+  // =====================================================
+  // REAL OPENSTREETMAP SEARCH
+  // =====================================================
+
+  const searchRealPG = async (place, category) => {
+    const url =
+      `${API_URL}/search-real-pg?location=${encodeURIComponent(place)}` +
+      `&property_type=${encodeURIComponent(category)}`;
+
+    console.log("REAL SEARCH:", url);
+
+    try {
+      const response = await fetchWithTimeout(
+        url,
+        {
+          headers: {
+            Accept: "application/json",
+          },
+        },
+        30000
+      );
+
+      console.log(
+        "REAL SEARCH STATUS:",
+        response.status
+      );
+
+      if (!response.ok) {
+        console.error(
+          "REAL SEARCH FAILED:",
+          response.status
+        );
+
+        return [];
+      }
+
+      const data = await response.json();
+
+      let results = normalizeResults(data);
+
+      results = filterCategory(
+        results,
+        category
+      );
+
+      return results;
+    } catch (error) {
+      console.error(
+        "REAL SEARCH ERROR:",
+        error
+      );
+
+      return [];
+    }
+  };
+
+  // =====================================================
+  // MAIN SEARCH
   // =====================================================
 
   const searchLocationData = async (
@@ -344,7 +506,7 @@ function App() {
       customCategory || selectedCategory;
 
     if (!place) {
-      setError("Please enter any location.");
+      setError("Please enter city, area, landmark or PIN code.");
       return;
     }
 
@@ -358,196 +520,140 @@ function App() {
       "=========================================="
     );
 
-    console.log("SEARCH LOCATION:", place);
-    console.log("SEARCH CATEGORY:", category);
+    console.log("SMART PG SEARCH");
+    console.log("LOCATION:", place);
+    console.log("CATEGORY:", category);
 
     console.log(
       "=========================================="
     );
 
-    // =====================================================
-    // STEP 1
-    // SMART PG DATABASE
-    // =====================================================
+    /*
+      ====================================================
+      STEP 1
+      LOCAL SMART PG DATABASE
+      ====================================================
+    */
 
-    const dbUrl =
-      `${API_URL}/pg?location=${encodeURIComponent(place)}` +
-      `&property_type=${encodeURIComponent(category)}`;
-
-    console.log(
-      "SMART PG DATABASE SEARCH:",
-      dbUrl
-    );
-
-    let dbResults = [];
-
-    try {
-      const dbResponse = await fetchWithTimeout(
-        dbUrl,
-        {
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-          },
-        },
-        10000
+    const databaseResults =
+      await searchDatabase(
+        place,
+        category
       );
 
-      console.log(
-        "SMART PG DATABASE STATUS:",
-        dbResponse.status
-      );
+    if (databaseResults.length > 0) {
+      const unique =
+        removeDuplicates(databaseResults);
 
-      if (dbResponse.ok) {
-        const dbData = await dbResponse.json();
-
-        console.log(
-          "SMART PG DATABASE DATA:",
-          dbData
-        );
-
-        dbResults = normalizeResults(dbData);
-
-        dbResults = filterCategory(
-          dbResults,
-          category
-        );
-      }
-    } catch (dbError) {
-      console.error(
-        "SMART PG DATABASE ERROR:",
-        dbError
-      );
-    }
-
-    // =====================================================
-    // STEP 2
-    // DATABASE RESULTS FOUND
-    // =====================================================
-
-    if (dbResults.length > 0) {
-      console.log(
-        `FOUND ${dbResults.length} PROPERTIES IN DATABASE`
-      );
-
-      setProperties(dbResults);
+      setProperties(unique);
 
       setMessage(
-        `${dbResults.length} ${category} accommodation(s) found near ${place}.`
+        `${unique.length} ${category} found in Smart PG database near ${place}.`
       );
 
       setLoading(false);
-
       return;
     }
 
-    // =====================================================
-    // STEP 3
-    // REAL OPENSTREETMAP DATA
-    // =====================================================
+    /*
+      ====================================================
+      STEP 2
+      REAL OSM SEARCH
+      ====================================================
 
-    const realUrl =
-      `${API_URL}/search-real-pg?location=${encodeURIComponent(place)}` +
-      `&property_type=${encodeURIComponent(category)}`;
+      Try original keyword first.
+    */
 
-    console.log(
-      "REAL MAP SEARCH URL:",
-      realUrl
-    );
-
-    let realResults = [];
-
-    try {
-      const realResponse = await fetchWithTimeout(
-        realUrl,
-        {
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-          },
-        },
-        20000
+    let realResults =
+      await searchRealPG(
+        place,
+        category
       );
 
-      console.log(
-        "REAL MAP SEARCH STATUS:",
-        realResponse.status
-      );
+    /*
+      ====================================================
+      STEP 3
+      IF NOTHING FOUND, TRY MORE KEYWORDS
+      ====================================================
+    */
 
-      if (realResponse.ok) {
-        const realData = await realResponse.json();
-
-        console.log(
-          "REAL MAP SEARCH DATA:",
-          realData
-        );
-
-        realResults = normalizeResults(realData);
-
-        realResults = filterCategory(
-          realResults,
+    if (realResults.length === 0) {
+      const keywords =
+        createSearchKeywords(
+          place,
           category
         );
-      }
-    } catch (realError) {
-      console.error(
-        "REAL MAP SEARCH ERROR:",
-        realError
+
+      console.log(
+        "KEYWORDS:",
+        keywords
       );
+
+      for (const keyword of keywords) {
+        console.log(
+          "TRYING KEYWORD:",
+          keyword
+        );
+
+        const results =
+          await searchRealPG(
+            keyword,
+            category
+          );
+
+        if (results.length > 0) {
+          realResults = results;
+          break;
+        }
+      }
     }
 
-    // =====================================================
-    // STEP 4
-    // REAL MAP RESULTS FOUND
-    // =====================================================
+    /*
+      ====================================================
+      STEP 4
+      REAL RESULTS
+      ====================================================
+    */
 
     if (realResults.length > 0) {
-      console.log(
-        `FOUND ${realResults.length} REAL MAP PROPERTIES`
-      );
+      const unique =
+        removeDuplicates(realResults);
 
-      setProperties(realResults);
+      setProperties(unique);
 
       setMessage(
-        `${realResults.length} real mapped ${category} place(s) found near ${place}.`
+        `${unique.length} real mapped ${category} place(s) found near ${place}.`
       );
 
       setLoading(false);
-
       return;
     }
 
-    // =====================================================
-    // STEP 5
-    // NOTHING FOUND
-    //
-    // IMPORTANT:
-    // DO NOT OPEN GOOGLE MAPS AUTOMATICALLY
-    // =====================================================
-
-    console.log(
-      "NO SMART PG OR OSM RESULTS FOUND."
-    );
+    /*
+      ====================================================
+      NOTHING FOUND
+      ====================================================
+    */
 
     setProperties([]);
 
     setMessage(
-      `No mapped ${category} accommodation was found near ${place}.`
+      `No ${category} was found in Smart PG or OpenStreetMap near ${place}.`
     );
 
     setLoading(false);
   };
 
   // =====================================================
-  // CATEGORY SELECT
+  // CATEGORY
   // =====================================================
 
   const handleCategory = (category) => {
     setSelectedCategory(category);
 
     setProperties([]);
-    setError("");
     setMessage("");
+    setError("");
 
     if (location.trim()) {
       searchLocationData(
@@ -558,7 +664,7 @@ function App() {
   };
 
   // =====================================================
-  // USE MY LOCATION
+  // MY LOCATION
   // =====================================================
 
   const useMyLocation = () => {
@@ -566,7 +672,6 @@ function App() {
       setError(
         "Your browser does not support location access."
       );
-
       return;
     }
 
@@ -583,34 +688,33 @@ function App() {
           position.coords.longitude;
 
         try {
-          const reverseUrl =
+          const url =
             `${API_URL}/reverse-location?latitude=` +
             encodeURIComponent(latitude) +
             `&longitude=` +
             encodeURIComponent(longitude);
 
-          const reverseResponse =
+          const response =
             await fetchWithTimeout(
-              reverseUrl,
+              url,
               {
-                method: "GET",
                 headers: {
                   Accept: "application/json",
                 },
               },
-              10000
+              12000
             );
 
           let place =
             `${latitude}, ${longitude}`;
 
-          if (reverseResponse.ok) {
-            const reverseData =
-              await reverseResponse.json();
+          if (response.ok) {
+            const data =
+              await response.json();
 
-            if (reverseData?.display_name) {
+            if (data?.display_name) {
               place =
-                reverseData.display_name;
+                data.display_name;
             }
           }
 
@@ -620,19 +724,14 @@ function App() {
             place,
             selectedCategory
           );
-        } catch (err) {
-          console.error(
-            "LOCATION ERROR:",
-            err
-          );
+        } catch (error) {
+          console.error(error);
 
           const coords =
             `${latitude}, ${longitude}`;
 
           setLocation(coords);
 
-          // IMPORTANT:
-          // Do not automatically open Google Maps.
           await searchLocationData(
             coords,
             selectedCategory
@@ -642,9 +741,7 @@ function App() {
         }
       },
 
-      (err) => {
-        console.error(err);
-
+      () => {
         setLocationLoading(false);
 
         setError(
@@ -654,14 +751,14 @@ function App() {
 
       {
         enableHighAccuracy: true,
-        timeout: 12000,
+        timeout: 15000,
         maximumAge: 30000,
       }
     );
   };
 
   // =====================================================
-  // RESET FILTERS
+  // FILTERS
   // =====================================================
 
   const resetFilters = () => {
@@ -671,22 +768,17 @@ function App() {
     setMaxRent("");
   };
 
-  // =====================================================
-  // FILTER PROPERTIES
-  // =====================================================
-
   const filteredProperties = useMemo(() => {
     return properties.filter((item) => {
-      // Suitable for
       if (
         pgType !== "All" &&
         item?.pg_type &&
-        item.pg_type !== pgType
+        String(item.pg_type).toLowerCase() !==
+          String(pgType).toLowerCase()
       ) {
         return false;
       }
 
-      // Food
       if (
         foodType !== "All" &&
         item?.food_type &&
@@ -697,7 +789,6 @@ function App() {
         return false;
       }
 
-      // Maximum rent
       if (
         maxRent &&
         item?.rent !== null &&
@@ -708,7 +799,6 @@ function App() {
         return false;
       }
 
-      // Hygiene
       if (hygiene === "Good") {
         const rating = Number(
           item?.hygiene_rating ||
@@ -716,9 +806,7 @@ function App() {
             0
         );
 
-        if (rating < 3) {
-          return false;
-        }
+        if (rating < 3) return false;
       }
 
       if (hygiene === "Highly hygienic") {
@@ -728,9 +816,7 @@ function App() {
             0
         );
 
-        if (rating < 4) {
-          return false;
-        }
+        if (rating < 4) return false;
       }
 
       return true;
@@ -744,6 +830,44 @@ function App() {
   ]);
 
   // =====================================================
+  // CATEGORY COUNTS
+  // =====================================================
+
+  const categoryCounts = useMemo(() => {
+    const counts = {
+      PG: 0,
+      Hostel: 0,
+      "Co-Living": 0,
+      Flat: 0,
+    };
+
+    properties.forEach((item) => {
+      const type =
+        normalizeType(
+          item?.property_type
+        );
+
+      if (type === "pg") {
+        counts.PG++;
+      }
+
+      if (type === "hostel") {
+        counts.Hostel++;
+      }
+
+      if (type === "co-living") {
+        counts["Co-Living"]++;
+      }
+
+      if (type === "flat") {
+        counts.Flat++;
+      }
+    });
+
+    return counts;
+  }, [properties]);
+
+  // =====================================================
   // COMPLAINT
   // =====================================================
 
@@ -754,7 +878,6 @@ function App() {
       setComplaintMessage(
         "Please enter Property / PG Name."
       );
-
       return;
     }
 
@@ -762,7 +885,6 @@ function App() {
       setComplaintMessage(
         "Please describe the incident."
       );
-
       return;
     }
 
@@ -793,9 +915,7 @@ function App() {
 
       setComplaintProperty("");
       setComplaintDescription("");
-    } catch (err) {
-      console.error(err);
-
+    } catch {
       setComplaintMessage(
         "Unable to save complaint."
       );
@@ -807,13 +927,9 @@ function App() {
   // =====================================================
 
   const logout = () => {
-    try {
-      localStorage.removeItem(
-        "smart_pg_user"
-      );
-    } catch (err) {
-      console.log(err);
-    }
+    localStorage.removeItem(
+      "smart_pg_user"
+    );
 
     setUser("Guest");
   };
@@ -848,6 +964,7 @@ function App() {
     <div className="app">
 
       <style>{`
+
         * {
           box-sizing: border-box;
         }
@@ -858,7 +975,11 @@ function App() {
 
         body {
           margin: 0;
-          font-family: Inter, Arial, Helvetica, sans-serif;
+          font-family:
+            Inter,
+            Arial,
+            Helvetica,
+            sans-serif;
           background: #f7f9fc;
           color: #172033;
         }
@@ -875,7 +996,7 @@ function App() {
         }
 
         button:disabled {
-          opacity: 0.65;
+          opacity: .6;
           cursor: not-allowed;
         }
 
@@ -884,6 +1005,9 @@ function App() {
         }
 
         .navbar {
+          position: sticky;
+          top: 0;
+          z-index: 50;
           background: white;
           border-bottom: 1px solid #e8ecf3;
           padding: 14px 5%;
@@ -891,9 +1015,6 @@ function App() {
           align-items: center;
           justify-content: space-between;
           gap: 20px;
-          position: sticky;
-          top: 0;
-          z-index: 20;
         }
 
         .brand {
@@ -943,12 +1064,13 @@ function App() {
 
         .hero {
           text-align: center;
-          padding: 45px 20px 28px;
-          background: radial-gradient(
-            circle at top,
-            #eaf2ff,
-            transparent 55%
-          );
+          padding: 50px 20px 32px;
+          background:
+            radial-gradient(
+              circle at top,
+              #eaf2ff,
+              transparent 55%
+            );
         }
 
         .india-badge {
@@ -968,7 +1090,7 @@ function App() {
         }
 
         .hero p {
-          max-width: 800px;
+          max-width: 850px;
           margin: auto;
           color: #68738a;
           line-height: 1.7;
@@ -989,7 +1111,8 @@ function App() {
           border-radius: 18px;
           padding: 24px;
           box-shadow:
-            0 8px 30px rgba(30,45,75,0.05);
+            0 8px 30px
+            rgba(30,45,75,.05);
         }
 
         .section-title {
@@ -1005,7 +1128,7 @@ function App() {
         .category-grid {
           display: grid;
           grid-template-columns:
-            repeat(4, minmax(0,1fr));
+            repeat(4,minmax(0,1fr));
           gap: 15px;
         }
 
@@ -1015,7 +1138,7 @@ function App() {
           border-radius: 16px;
           padding: 20px;
           text-align: center;
-          transition: 0.2s;
+          transition: .2s;
         }
 
         .category-card:hover {
@@ -1082,7 +1205,7 @@ function App() {
           border-color: #5578ff;
           box-shadow:
             0 0 0 3px
-            rgba(85,120,255,0.1);
+            rgba(85,120,255,.1);
         }
 
         .primary-btn {
@@ -1165,14 +1288,16 @@ function App() {
           border-radius: 17px;
           padding: 19px;
           box-shadow:
-            0 8px 25px rgba(35,48,75,0.05);
+            0 8px 25px
+            rgba(35,48,75,.05);
+          transition: .2s;
         }
 
         .property-card:hover {
           transform: translateY(-2px);
           box-shadow:
             0 12px 30px
-            rgba(35,48,75,0.09);
+            rgba(35,48,75,.09);
         }
 
         .property-top {
@@ -1391,6 +1516,7 @@ function App() {
             flex-direction: column;
           }
         }
+
       `}</style>
 
       {/* =====================================================
@@ -1398,15 +1524,19 @@ function App() {
       ===================================================== */}
 
       <nav className="navbar">
+
         <div className="brand">
+
           <div className="brand-icon">
-            ðŸ 
+            🏠
           </div>
 
           Smart PG
+
         </div>
 
         <div className="nav-right">
+
           <span className="hello">
             Hi, {user}
           </span>
@@ -1419,7 +1549,7 @@ function App() {
               )
             }
           >
-            âž• Add Property
+            ➕ Add Property
           </button>
 
           <button
@@ -1428,7 +1558,9 @@ function App() {
           >
             Logout
           </button>
+
         </div>
+
       </nav>
 
       {/* =====================================================
@@ -1436,8 +1568,9 @@ function App() {
       ===================================================== */}
 
       <section className="hero">
+
         <div className="india-badge">
-          ðŸ‡®ðŸ‡³ INDIA-WIDE ACCOMMODATION
+          🇮🇳 INDIA-WIDE ACCOMMODATION
         </div>
 
         <h1>
@@ -1447,11 +1580,11 @@ function App() {
         <p>
           Search PG, Hostel, Co-Living and Flat
           anywhere in India. Enter any city, area,
-          landmark or PIN code. Real mapped
-          accommodation is shown when available.
-          If nothing is found, you can manually
-          search Google Maps.
+          landmark or PIN code. Smart PG checks its
+          own database first and then searches
+          real mapped accommodation data.
         </p>
+
       </section>
 
       <main className="container">
@@ -1461,20 +1594,21 @@ function App() {
         ===================================================== */}
 
         <section className="section">
+
           <div className="section-card">
 
             <h2 className="section-title">
-              1ï¸âƒ£ Choose Accommodation Type First
+              1️⃣ Choose Accommodation Type
             </h2>
 
             <p className="section-subtitle">
-              Select one category, then search the
-              location.
+              Select PG, Hostel, Co-Living or Flat.
             </p>
 
             <div className="category-grid">
 
               {CATEGORIES.map((category) => (
+
                 <button
                   key={category.key}
                   className={
@@ -1512,38 +1646,39 @@ function App() {
                   </span>
 
                 </button>
+
               ))}
 
             </div>
 
             <div className="selected-info">
-              âœ… Selected:{" "}
+
+              ✅ Selected:
+              {" "}
               <strong>
                 {selectedCategory}
-              </strong>{" "}
-              â€” now search your location below.
+              </strong>
+
             </div>
 
           </div>
+
         </section>
 
         {/* =====================================================
-            LOCATION SEARCH
+            SEARCH
         ===================================================== */}
 
         <section className="section">
+
           <div className="section-card">
 
             <h2 className="section-title">
-              2ï¸âƒ£ Search Location
+              2️⃣ Search Location
             </h2>
 
             <p className="section-subtitle">
-              Only{" "}
-              <strong>
-                {selectedCategory}
-              </strong>{" "}
-              results will be searched.
+              Enter city, area, landmark or PIN code.
             </p>
 
             <div className="search-row">
@@ -1552,16 +1687,14 @@ function App() {
                 className="location-input"
                 value={location}
                 onChange={(e) =>
-                  setLocation(
-                    e.target.value
-                  )
+                  setLocation(e.target.value)
                 }
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     searchLocationData();
                   }
                 }}
-                placeholder="Enter city, area, landmark or PIN code..."
+                placeholder="Example: Bangalore, Koramangala, HSR Layout, 560034..."
               />
 
               <button
@@ -1571,16 +1704,20 @@ function App() {
                 }
                 disabled={loading}
               >
+
                 {loading ? (
                   <>
                     <span className="spin">
-                      âŸ³
-                    </span>{" "}
-                    Searching...
+                      ⏳
+                    </span>
+                    {" "}Searching...
                   </>
                 ) : (
-                  <>ðŸ”Ž Search</>
+                  <>
+                    🔎 Search
+                  </>
                 )}
+
               </button>
 
             </div>
@@ -1592,9 +1729,11 @@ function App() {
                 onClick={useMyLocation}
                 disabled={locationLoading}
               >
+
                 {locationLoading
-                  ? "ðŸ“ Getting Location..."
-                  : "ðŸ“ Use My Location"}
+                  ? "📍 Getting Location..."
+                  : "📍 Use My Location"}
+
               </button>
 
               <button
@@ -1603,25 +1742,31 @@ function App() {
                   openGoogleMaps()
                 }
               >
-                ðŸ—ºï¸ Open Google Maps
+                🗺️ Open Google Maps
               </button>
 
             </div>
 
             <div className="search-note">
-              ðŸŸ¢ Smart PG checks its database
-              first, then real OpenStreetMap
-              data. Google Maps opens only when
-              you click a map button.
+
+              🟢 Search order:
+              Smart PG Database → Real OpenStreetMap →
+              keyword variations.
+
             </div>
 
             {searchLocation && (
+
               <div className="search-note">
-                ðŸ“ Location:{" "}
+
+                📍 Searching:
+                {" "}
                 <strong>
                   {searchLocation}
                 </strong>
+
               </div>
+
             )}
 
             {message && (
@@ -1632,11 +1777,12 @@ function App() {
 
             {error && (
               <div className="error">
-                âš ï¸ {error}
+                ⚠️ {error}
               </div>
             )}
 
           </div>
+
         </section>
 
         {/* =====================================================
@@ -1654,18 +1800,19 @@ function App() {
               </h2>
 
               <div className="search-note">
-                Showing{" "}
+
+                Showing
+                {" "}
                 <strong>
                   {filteredProperties.length}
-                </strong>{" "}
-                properties for{" "}
-                <strong>
-                  {selectedCategory}
                 </strong>
+                {" "}
+                {selectedCategory}
 
                 {searchLocation
                   ? ` near ${searchLocation}`
                   : ""}
+
               </div>
 
             </div>
@@ -1674,7 +1821,7 @@ function App() {
               className="secondary-btn"
               onClick={refreshSearch}
             >
-              ðŸ”„ Refresh
+              🔄 Refresh
             </button>
 
           </div>
@@ -1684,16 +1831,16 @@ function App() {
             <div className="empty">
 
               <div className="empty-icon">
-                ðŸ”Ž
+                🔎
               </div>
 
               <h3>
-                Searching location...
+                Searching...
               </h3>
 
               <p>
-                Checking Smart PG and real
-                OpenStreetMap data.
+                Checking Smart PG database and
+                real mapped accommodation.
               </p>
 
             </div>
@@ -1703,24 +1850,25 @@ function App() {
             <div className="empty">
 
               <div className="empty-icon">
-                {searchLocation
-                  ? "ðŸ—ºï¸"
-                  : "ðŸ "}
+                🗺️
               </div>
 
               <h3>
                 {searchLocation
-                  ? "No mapped accommodation found"
+                  ? "No accommodation found"
                   : "Search a location first"}
               </h3>
 
               <p>
+
                 {searchLocation
-                  ? `No mapped ${selectedCategory} was found near ${searchLocation}.`
+                  ? `No ${selectedCategory} was found near ${searchLocation}.`
                   : "Enter any city, area, landmark or PIN code above."}
+
               </p>
 
               {searchLocation && (
+
                 <button
                   className="map-btn"
                   onClick={() =>
@@ -1730,8 +1878,9 @@ function App() {
                     )
                   }
                 >
-                  ðŸ—ºï¸ Search on Google Maps
+                  🗺️ Search on Google Maps
                 </button>
+
               )}
 
             </div>
@@ -1747,7 +1896,8 @@ function App() {
                     className="property-card"
                     key={
                       item?.id ||
-                      `${item?.name || "property"}-${index}`
+                      item?.osm_id ||
+                      `${item?.name}-${index}`
                     }
                   >
 
@@ -1766,87 +1916,101 @@ function App() {
                     </div>
 
                     <div className="location-text">
-                      ðŸ“{" "}
+
+                      📍{" "}
                       {item?.location ||
                         item?.address ||
                         "Location available on map"}
+
                     </div>
 
                     {item?.distance_km !==
                       undefined &&
                       item?.distance_km !==
                         null && (
+
                         <div className="distance">
-                          ðŸ“{" "}
+
+                          📏{" "}
                           {Number(
                             item.distance_km
-                          ).toFixed(2)}{" "}
-                          km away
+                          ).toFixed(2)}
+                          {" "}km away
+
                         </div>
-                      )}
+
+                    )}
 
                     {item?.rent !== null &&
                       item?.rent !==
                         undefined &&
                       item?.rent !== "" && (
+
                         <div className="rent">
-                          â‚¹
+
+                          ₹
                           {Number(
                             item.rent
                           ).toLocaleString(
                             "en-IN"
                           )}
+
                           /month
+
                         </div>
-                      )}
+
+                    )}
 
                     <div className="details">
 
                       <div>
-                        ðŸ‘¤ Suitable for:{" "}
+                        👤 Suitable for:
+                        {" "}
                         {item?.pg_type ||
                           "Unisex"}
                       </div>
 
                       <div>
-                        ðŸ± Food:{" "}
+                        🍱 Food:
+                        {" "}
                         {item?.food_type ||
                           "Not specified"}
                       </div>
 
                       {item?.wifi_available && (
                         <div>
-                          ðŸ“¶ Wi-Fi Available
+                          📶 Wi-Fi Available
                         </div>
                       )}
 
                       {item?.cctv_available && (
                         <div>
-                          ðŸ“¹ CCTV Available
+                          📹 CCTV Available
                         </div>
                       )}
 
                       {item?.security_available && (
                         <div>
-                          ðŸ›¡ï¸ Security Available
+                          🛡️ Security Available
                         </div>
                       )}
 
                       {item?.parking_available && (
                         <div>
-                          ðŸš— Parking Available
+                          🚗 Parking Available
                         </div>
                       )}
 
                       {item?.geyser_available && (
                         <div>
-                          ðŸš¿ Geyser Available
+                          🚿 Geyser Available
                         </div>
                       )}
 
                       {item?.room_type && (
                         <div>
-                          ðŸ›ï¸ Room:{" "}
+                          🛏️ Room:
+                          {" "}
                           {item.room_type}
                         </div>
                       )}
@@ -1855,7 +2019,8 @@ function App() {
                         item?.cleaning_rating || 0
                       ) > 0 && (
                         <div>
-                          ðŸ§¼ Cleaning:{" "}
+                          🧹 Cleaning:
+                          {" "}
                           {item.cleaning_rating}/5
                         </div>
                       )}
@@ -1864,14 +2029,16 @@ function App() {
                         item?.hygiene_rating || 0
                       ) > 0 && (
                         <div>
-                          ðŸ§¼ Hygiene:{" "}
+                          🧼 Hygiene:
+                          {" "}
                           {item.hygiene_rating}/5
                         </div>
                       )}
 
                       {item?.source && (
                         <div>
-                          ðŸŒ Source:{" "}
+                          🌐 Source:
+                          {" "}
                           {item.source}
                         </div>
                       )}
@@ -1888,28 +2055,23 @@ function App() {
                           )
                         }
                       >
-                        ðŸ—ºï¸ View on Map
+                        🗺️ View on Map
                       </button>
 
                       {item?.website && (
+
                         <button
                           className="secondary-btn"
-                          onClick={() => {
-                            const siteWindow =
-                              window.open(
-                                item.website,
-                                "_blank",
-                                "noopener,noreferrer"
-                              );
-
-                            if (!siteWindow) {
-                              window.location.href =
-                                item.website;
-                            }
-                          }}
+                          onClick={() =>
+                            window.open(
+                              item.website,
+                              "_blank"
+                            )
+                          }
                         >
-                          ðŸŒ Website
+                          🌐 Website
                         </button>
+
                       )}
 
                     </div>
@@ -1934,12 +2096,11 @@ function App() {
           <div className="section-card">
 
             <h2 className="section-title">
-              ðŸ”Ž Stay Filters
+              🔎 Stay Filters
             </h2>
 
             <p className="section-subtitle">
-              Boys/Girls/Unisex, Veg/Non-Veg
-              and hygiene preferences.
+              Filter your search results.
             </p>
 
             <div className="filter-grid">
@@ -1953,9 +2114,7 @@ function App() {
                 <select
                   value={pgType}
                   onChange={(e) =>
-                    setPgType(
-                      e.target.value
-                    )
+                    setPgType(e.target.value)
                   }
                 >
 
@@ -1988,9 +2147,7 @@ function App() {
                 <select
                   value={foodType}
                   onChange={(e) =>
-                    setFoodType(
-                      e.target.value
-                    )
+                    setFoodType(e.target.value)
                   }
                 >
 
@@ -2019,9 +2176,7 @@ function App() {
                 <select
                   value={hygiene}
                   onChange={(e) =>
-                    setHygiene(
-                      e.target.value
-                    )
+                    setHygiene(e.target.value)
                   }
                 >
 
@@ -2052,11 +2207,9 @@ function App() {
                   min="0"
                   value={maxRent}
                   onChange={(e) =>
-                    setMaxRent(
-                      e.target.value
-                    )
+                    setMaxRent(e.target.value)
                   }
-                  placeholder="â‚¹ Maximum"
+                  placeholder="₹ Maximum"
                 />
 
               </div>
@@ -2069,7 +2222,7 @@ function App() {
                 className="secondary-btn"
                 onClick={resetFilters}
               >
-                â†» Reset Filters
+                ↩ Reset Filters
               </button>
 
             </div>
@@ -2087,13 +2240,12 @@ function App() {
           <div className="section-card complaint">
 
             <h2 className="section-title">
-              ðŸš¨ Lost / Robbed / Stolen Item Complaint
+              🚨 Lost / Robbed / Stolen Item Complaint
             </h2>
 
             <p className="section-subtitle">
               PG, Hostel, Co-Living ya Flat me
-              lost, missing ya stolen item ka
-              neutral report save karo.
+              incident report save karo.
             </p>
 
             <form onSubmit={submitComplaint}>
@@ -2179,7 +2331,7 @@ function App() {
                 className="complaint-btn"
                 type="submit"
               >
-                ðŸš¨ Submit Complaint
+                🚨 Submit Complaint
               </button>
 
               {complaintMessage && (
@@ -2208,17 +2360,16 @@ function App() {
             fontWeight: 800,
           }}
         >
-          ðŸ  Smart PG
+          🏠 Smart PG
         </div>
 
         <p>
           Find PG, Hostel, Co-Living & Flat
-          with category-first search, GPS,
-          real map data and incident reporting.
+          across India.
         </p>
 
         <p>
-          Â© 2026 Smart PG
+          © 2026 Smart PG
         </p>
 
       </footer>
