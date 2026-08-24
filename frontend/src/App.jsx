@@ -1,15 +1,5 @@
 import React, { useMemo, useState } from "react";
 
-/*
-=========================================================
-SMART PG - LIVE FRONTEND
-=========================================================
-IMPORTANT:
-Actual deployed backend:
-https://smart-pg-backend-sriy.onrender.com
-=========================================================
-*/
-
 const API_URL = "https://smart-pg-backend-sriy.onrender.com";
 
 const CATEGORIES = [
@@ -44,7 +34,6 @@ function App() {
 
   const [location, setLocation] = useState("");
   const [searchLocation, setSearchLocation] = useState("");
-
   const [properties, setProperties] = useState([]);
 
   const [loading, setLoading] = useState(false);
@@ -53,14 +42,30 @@ function App() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
+  // =====================================================
+  // LOGIN
+  // =====================================================
+
   const [user, setUser] = useState(
-    () => localStorage.getItem("smart_pg_user") || "Shivani"
+    () => localStorage.getItem("smart_pg_user") || ""
   );
+
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+
+  // =====================================================
+  // FILTERS
+  // =====================================================
 
   const [pgType, setPgType] = useState("All");
   const [foodType, setFoodType] = useState("All");
   const [hygiene, setHygiene] = useState("All");
   const [maxRent, setMaxRent] = useState("");
+
+  // =====================================================
+  // COMPLAINT
+  // =====================================================
 
   const [complaintType, setComplaintType] = useState(
     "Robbed / Stolen Item"
@@ -69,6 +74,57 @@ function App() {
   const [complaintProperty, setComplaintProperty] = useState("");
   const [complaintDescription, setComplaintDescription] = useState("");
   const [complaintMessage, setComplaintMessage] = useState("");
+
+  // =====================================================
+  // LOGIN FUNCTION
+  // =====================================================
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+
+    const email = loginEmail.trim().toLowerCase();
+    const password = loginPassword;
+
+    if (!email || !password) {
+      setLoginError("Please enter email and password.");
+      return;
+    }
+
+    if (
+      email === "demo@smartpg.com" &&
+      password === "demo123"
+    ) {
+      localStorage.setItem("smart_pg_user", "Shivani");
+      setUser("Shivani");
+      setLoginEmail("");
+      setLoginPassword("");
+      setLoginError("");
+      return;
+    }
+
+    setLoginError(
+      "Invalid login. Use demo@smartpg.com / demo123"
+    );
+  };
+
+  // =====================================================
+  // LOGOUT
+  // =====================================================
+
+  const logout = () => {
+    localStorage.removeItem("smart_pg_user");
+
+    setUser("");
+    setLoginEmail("");
+    setLoginPassword("");
+    setLoginError("");
+
+    setProperties([]);
+    setSearchLocation("");
+    setLocation("");
+    setMessage("");
+    setError("");
+  };
 
   // =====================================================
   // TIMEOUT FETCH
@@ -241,7 +297,7 @@ function App() {
     const url = getGoogleMapsUrl(place, category);
 
     if (!url) {
-      alert("Please enter a location first.");
+      setError("Please enter a location first.");
       return;
     }
 
@@ -288,7 +344,7 @@ function App() {
   };
 
   // =====================================================
-  // CREATE SEARCH KEYWORDS
+  // SEARCH KEYWORDS
   // =====================================================
 
   const createSearchKeywords = (place, category) => {
@@ -311,13 +367,9 @@ function App() {
       }
     };
 
-    // Original search
     add(original);
-
-    // Remove extra spaces
     add(original.replace(/\s+/g, " "));
 
-    // Remove common separators
     add(
       original
         .replace(/,/g, " ")
@@ -325,28 +377,12 @@ function App() {
         .trim()
     );
 
-    /*
-      Example:
-      "Koramangala, Bangalore"
-
-      Searches:
-      Koramangala, Bangalore
-      Koramangala Bangalore
-      Koramangala
-      Bangalore
-    */
-
     const parts = original
       .split(",")
       .map((x) => x.trim())
       .filter(Boolean);
 
     parts.forEach(add);
-
-    /*
-      If user enters:
-      "HSR Layout Bangalore"
-    */
 
     const words = original
       .split(/\s+/)
@@ -358,7 +394,6 @@ function App() {
       add(words.slice(1).join(" "));
     }
 
-    // Add category keyword for real search
     if (category === "PG") {
       add(`${original} PG`);
       add(`${original} paying guest`);
@@ -382,15 +417,13 @@ function App() {
   };
 
   // =====================================================
-  // SMART DATABASE SEARCH
+  // DATABASE SEARCH
   // =====================================================
 
   const searchDatabase = async (place, category) => {
     const url =
       `${API_URL}/pg?location=${encodeURIComponent(place)}` +
       `&property_type=${encodeURIComponent(category)}`;
-
-    console.log("DATABASE SEARCH:", url);
 
     try {
       const response = await fetchWithTimeout(
@@ -403,11 +436,6 @@ function App() {
         12000
       );
 
-      console.log(
-        "DATABASE STATUS:",
-        response.status
-      );
-
       if (!response.ok) {
         return [];
       }
@@ -416,10 +444,7 @@ function App() {
 
       let results = normalizeResults(data);
 
-      results = filterCategory(
-        results,
-        category
-      );
+      results = filterCategory(results, category);
 
       return results;
     } catch (error) {
@@ -433,15 +458,13 @@ function App() {
   };
 
   // =====================================================
-  // REAL OPENSTREETMAP SEARCH
+  // REAL OSM SEARCH
   // =====================================================
 
   const searchRealPG = async (place, category) => {
     const url =
       `${API_URL}/search-real-pg?location=${encodeURIComponent(place)}` +
       `&property_type=${encodeURIComponent(category)}`;
-
-    console.log("REAL SEARCH:", url);
 
     try {
       const response = await fetchWithTimeout(
@@ -454,17 +477,7 @@ function App() {
         30000
       );
 
-      console.log(
-        "REAL SEARCH STATUS:",
-        response.status
-      );
-
       if (!response.ok) {
-        console.error(
-          "REAL SEARCH FAILED:",
-          response.status
-        );
-
         return [];
       }
 
@@ -472,10 +485,7 @@ function App() {
 
       let results = normalizeResults(data);
 
-      results = filterCategory(
-        results,
-        category
-      );
+      results = filterCategory(results, category);
 
       return results;
     } catch (error) {
@@ -506,7 +516,9 @@ function App() {
       customCategory || selectedCategory;
 
     if (!place) {
-      setError("Please enter city, area, landmark or PIN code.");
+      setError(
+        "Please enter city, area, landmark or PIN code."
+      );
       return;
     }
 
@@ -515,25 +527,6 @@ function App() {
     setMessage("");
     setProperties([]);
     setSearchLocation(place);
-
-    console.log(
-      "=========================================="
-    );
-
-    console.log("SMART PG SEARCH");
-    console.log("LOCATION:", place);
-    console.log("CATEGORY:", category);
-
-    console.log(
-      "=========================================="
-    );
-
-    /*
-      ====================================================
-      STEP 1
-      LOCAL SMART PG DATABASE
-      ====================================================
-    */
 
     const databaseResults =
       await searchDatabase(
@@ -555,27 +548,11 @@ function App() {
       return;
     }
 
-    /*
-      ====================================================
-      STEP 2
-      REAL OSM SEARCH
-      ====================================================
-
-      Try original keyword first.
-    */
-
     let realResults =
       await searchRealPG(
         place,
         category
       );
-
-    /*
-      ====================================================
-      STEP 3
-      IF NOTHING FOUND, TRY MORE KEYWORDS
-      ====================================================
-    */
 
     if (realResults.length === 0) {
       const keywords =
@@ -584,17 +561,7 @@ function App() {
           category
         );
 
-      console.log(
-        "KEYWORDS:",
-        keywords
-      );
-
       for (const keyword of keywords) {
-        console.log(
-          "TRYING KEYWORD:",
-          keyword
-        );
-
         const results =
           await searchRealPG(
             keyword,
@@ -607,13 +574,6 @@ function App() {
         }
       }
     }
-
-    /*
-      ====================================================
-      STEP 4
-      REAL RESULTS
-      ====================================================
-    */
 
     if (realResults.length > 0) {
       const unique =
@@ -628,12 +588,6 @@ function App() {
       setLoading(false);
       return;
     }
-
-    /*
-      ====================================================
-      NOTHING FOUND
-      ====================================================
-    */
 
     setProperties([]);
 
@@ -740,7 +694,6 @@ function App() {
           setLocationLoading(false);
         }
       },
-
       () => {
         setLocationLoading(false);
 
@@ -748,7 +701,6 @@ function App() {
           "Location permission denied. Please enter your location manually."
         );
       },
-
       {
         enableHighAccuracy: true,
         timeout: 15000,
@@ -923,18 +875,6 @@ function App() {
   };
 
   // =====================================================
-  // LOGOUT
-  // =====================================================
-
-  const logout = () => {
-    localStorage.removeItem(
-      "smart_pg_user"
-    );
-
-    setUser("Guest");
-  };
-
-  // =====================================================
   // REFRESH
   // =====================================================
 
@@ -957,7 +897,215 @@ function App() {
   };
 
   // =====================================================
-  // UI
+  // LOGIN SCREEN
+  // =====================================================
+
+  if (!user) {
+    return (
+      <div className="login-page">
+
+        <style>{`
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            margin: 0;
+            font-family:
+              Inter,
+              Arial,
+              Helvetica,
+              sans-serif;
+          }
+
+          .login-page {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background:
+              radial-gradient(
+                circle at top,
+                #eaf2ff,
+                #f7f9fc 55%
+              );
+          }
+
+          .login-card {
+            width: 100%;
+            max-width: 430px;
+            background: white;
+            padding: 36px;
+            border-radius: 20px;
+            border: 1px solid #e4e9f1;
+            box-shadow:
+              0 15px 45px
+              rgba(30,45,75,.10);
+          }
+
+          .login-logo {
+            width: 65px;
+            height: 65px;
+            margin: auto;
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #eef4ff;
+            font-size: 34px;
+          }
+
+          .login-card h1 {
+            text-align: center;
+            margin: 16px 0 7px;
+          }
+
+          .login-subtitle {
+            text-align: center;
+            color: #68738a;
+            margin-bottom: 25px;
+          }
+
+          .login-label {
+            display: block;
+            font-weight: 700;
+            margin-bottom: 7px;
+          }
+
+          .login-input {
+            width: 100%;
+            padding: 13px 14px;
+            border: 1px solid #d9e0eb;
+            border-radius: 10px;
+            margin-bottom: 16px;
+            outline: none;
+            font-size: 15px;
+          }
+
+          .login-input:focus {
+            border-color: #5578ff;
+            box-shadow:
+              0 0 0 3px
+              rgba(85,120,255,.1);
+          }
+
+          .login-error {
+            padding: 12px;
+            border-radius: 9px;
+            background: #fff1f1;
+            color: #a12d2d;
+            margin-bottom: 15px;
+            font-size: 14px;
+          }
+
+          .login-btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 10px;
+            background: #3867ff;
+            color: white;
+            font-weight: 800;
+            cursor: pointer;
+            font-size: 16px;
+          }
+
+          .login-btn:hover {
+            background: #2855e6;
+          }
+
+          .demo-box {
+            margin-top: 20px;
+            padding: 14px;
+            background: #f2f6ff;
+            border-radius: 10px;
+            color: #4d5d7a;
+            text-align: center;
+            font-size: 13px;
+            line-height: 1.7;
+          }
+
+        `}</style>
+
+        <div className="login-card">
+
+          <div className="login-logo">
+            🏠
+          </div>
+
+          <h1>
+            Smart PG
+          </h1>
+
+          <div className="login-subtitle">
+            Login to find your perfect stay
+          </div>
+
+          <form onSubmit={handleLogin}>
+
+            <label className="login-label">
+              Email
+            </label>
+
+            <input
+              className="login-input"
+              type="email"
+              value={loginEmail}
+              onChange={(e) =>
+                setLoginEmail(e.target.value)
+              }
+              placeholder="Enter email"
+              autoComplete="email"
+            />
+
+            <label className="login-label">
+              Password
+            </label>
+
+            <input
+              className="login-input"
+              type="password"
+              value={loginPassword}
+              onChange={(e) =>
+                setLoginPassword(e.target.value)
+              }
+              placeholder="Enter password"
+              autoComplete="current-password"
+            />
+
+            {loginError && (
+              <div className="login-error">
+                ⚠️ {loginError}
+              </div>
+            )}
+
+            <button
+              className="login-btn"
+              type="submit"
+            >
+              🔐 Login
+            </button>
+
+          </form>
+
+          <div className="demo-box">
+            <strong>Demo Login</strong>
+            <br />
+            Email: <strong>demo@smartpg.com</strong>
+            <br />
+            Password: <strong>demo123</strong>
+          </div>
+
+        </div>
+
+      </div>
+    );
+  }
+
+  // =====================================================
+  // MAIN APP
   // =====================================================
 
   return (
@@ -1543,11 +1691,16 @@ function App() {
 
           <button
             className="nav-btn"
-            onClick={() =>
-              alert(
-                "Property owner registration can be connected to the backend."
-              )
-            }
+            onClick={() => {
+              setMessage(
+                "Property owner registration will be available soon."
+              );
+
+              window.scrollTo({
+                top: document.body.scrollHeight,
+                behavior: "smooth",
+              });
+            }}
           >
             ➕ Add Property
           </button>
@@ -1556,7 +1709,7 @@ function App() {
             className="nav-btn"
             onClick={logout}
           >
-            Logout
+            🚪 Logout
           </button>
 
         </div>
