@@ -3,132 +3,110 @@ import React, { useMemo, useState } from "react";
 const API_URL = "https://smart-pg-backend-sriy.onrender.com";
 
 const CATEGORIES = [
-  {
-    key: "PG",
-    title: "PG",
-    subtitle: "Paying Guest",
-    icon: "🏠",
-  },
-  {
-    key: "Hostel",
-    title: "Hostel",
-    subtitle: "Hostels",
-    icon: "🏨",
-  },
-  {
-    key: "Co-Living",
-    title: "Co-Living",
-    subtitle: "Shared living",
-    icon: "🏢",
-  },
-  {
-    key: "Flat",
-    title: "Flat",
-    subtitle: "Apartments",
-    icon: "🏙️",
-  },
+  { key: "PG", title: "PG", subtitle: "Paying Guest", icon: "🏠" },
+  { key: "Hostel", title: "Hostel", subtitle: "Hostels", icon: "🏨" },
+  { key: "Co-Living", title: "Co-Living", subtitle: "Shared living", icon: "🏢" },
+  { key: "Flat", title: "Flat", subtitle: "Apartments", icon: "🏙️" },
 ];
 
-function App() {
-  const [selectedCategory, setSelectedCategory] = useState("PG");
-
-  const [location, setLocation] = useState("");
-  const [searchLocation, setSearchLocation] = useState("");
-  const [properties, setProperties] = useState([]);
-
-  const [loading, setLoading] = useState(false);
-  const [locationLoading, setLocationLoading] = useState(false);
-
+function Login({ onLogin }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
 
-  // =====================================================
-  // LOGIN
-  // =====================================================
+  const login = (e) => {
+    e.preventDefault();
+    setError("");
 
+    if (
+      email.trim().toLowerCase() === "demo@smartpg.com" &&
+      password === "demo123"
+    ) {
+      localStorage.setItem("smart_pg_user", "Shivani");
+      onLogin("Shivani");
+    } else {
+      setError(
+        "Invalid login. Demo: demo@smartpg.com / demo123"
+      );
+    }
+  };
+
+  return (
+    <div className="login-page">
+      <div className="login-card">
+        <div className="login-logo">🏠</div>
+
+        <h1>Smart PG</h1>
+
+        <p className="login-subtitle">
+          Find PG, Hostel, Co-Living & Flat across India
+        </p>
+
+        <form onSubmit={login}>
+          <label>Email</label>
+
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Enter email"
+            required
+          />
+
+          <label>Password</label>
+
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter password"
+            required
+          />
+
+          {error && <div className="login-error">{error}</div>}
+
+          <button className="login-btn" type="submit">
+            🔐 Login
+          </button>
+        </form>
+
+        <div className="demo-box">
+          <strong>Demo Login</strong>
+          <br />
+          Email: demo@smartpg.com
+          <br />
+          Password: demo123
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function App() {
   const [user, setUser] = useState(
     () => localStorage.getItem("smart_pg_user") || ""
   );
 
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
-
-  // =====================================================
-  // FILTERS
-  // =====================================================
+  const [selectedCategory, setSelectedCategory] = useState("PG");
+  const [location, setLocation] = useState("");
+  const [searchLocation, setSearchLocation] = useState("");
+  const [properties, setProperties] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   const [pgType, setPgType] = useState("All");
   const [foodType, setFoodType] = useState("All");
   const [hygiene, setHygiene] = useState("All");
   const [maxRent, setMaxRent] = useState("");
 
-  // =====================================================
-  // COMPLAINT
-  // =====================================================
-
-  const [complaintType, setComplaintType] = useState(
-    "Robbed / Stolen Item"
-  );
-
+  const [complaintType, setComplaintType] =
+    useState("Robbed / Stolen Item");
   const [complaintProperty, setComplaintProperty] = useState("");
-  const [complaintDescription, setComplaintDescription] = useState("");
+  const [complaintDescription, setComplaintDescription] =
+    useState("");
   const [complaintMessage, setComplaintMessage] = useState("");
-
-  // =====================================================
-  // LOGIN FUNCTION
-  // =====================================================
-
-  const handleLogin = (e) => {
-    e.preventDefault();
-
-    const email = loginEmail.trim().toLowerCase();
-    const password = loginPassword;
-
-    if (!email || !password) {
-      setLoginError("Please enter email and password.");
-      return;
-    }
-
-    if (
-      email === "demo@smartpg.com" &&
-      password === "demo123"
-    ) {
-      localStorage.setItem("smart_pg_user", "Shivani");
-      setUser("Shivani");
-      setLoginEmail("");
-      setLoginPassword("");
-      setLoginError("");
-      return;
-    }
-
-    setLoginError(
-      "Invalid login. Use demo@smartpg.com / demo123"
-    );
-  };
-
-  // =====================================================
-  // LOGOUT
-  // =====================================================
-
-  const logout = () => {
-    localStorage.removeItem("smart_pg_user");
-
-    setUser("");
-    setLoginEmail("");
-    setLoginPassword("");
-    setLoginError("");
-
-    setProperties([]);
-    setSearchLocation("");
-    setLocation("");
-    setMessage("");
-    setError("");
-  };
-
-  // =====================================================
-  // TIMEOUT FETCH
-  // =====================================================
 
   const fetchWithTimeout = async (
     url,
@@ -137,9 +115,10 @@ function App() {
   ) => {
     const controller = new AbortController();
 
-    const timer = setTimeout(() => {
-      controller.abort();
-    }, timeout);
+    const timer = setTimeout(
+      () => controller.abort(),
+      timeout
+    );
 
     try {
       return await fetch(url, {
@@ -151,31 +130,14 @@ function App() {
     }
   };
 
-  // =====================================================
-  // NORMALIZE API RESPONSE
-  // =====================================================
-
   const normalizeResults = (data) => {
     if (Array.isArray(data)) return data;
-
-    if (Array.isArray(data?.results)) {
-      return data.results;
-    }
-
-    if (Array.isArray(data?.data)) {
-      return data.data;
-    }
-
-    if (Array.isArray(data?.properties)) {
+    if (Array.isArray(data?.results)) return data.results;
+    if (Array.isArray(data?.data)) return data.data;
+    if (Array.isArray(data?.properties))
       return data.properties;
-    }
-
     return [];
   };
-
-  // =====================================================
-  // NORMALIZE PROPERTY TYPE
-  // =====================================================
 
   const normalizeType = (value) => {
     const text = String(value || "")
@@ -186,79 +148,53 @@ function App() {
     if (
       text.includes("co living") ||
       text.includes("coliving")
-    ) {
+    )
       return "co-living";
-    }
 
-    if (text.includes("hostel")) {
-      return "hostel";
-    }
+    if (text.includes("hostel")) return "hostel";
 
     if (
       text.includes("flat") ||
       text.includes("apartment")
-    ) {
+    )
       return "flat";
-    }
 
     if (
       text.includes("pg") ||
       text.includes("paying guest")
-    ) {
+    )
       return "pg";
-    }
 
     return text;
   };
 
-  // =====================================================
-  // FILTER CATEGORY
-  // =====================================================
-
   const filterCategory = (results, category) => {
     return results.filter((item) => {
-      if (!item?.property_type) {
-        return true;
-      }
+      if (!item?.property_type) return true;
 
-      const actual = normalizeType(item.property_type);
-      const wanted = normalizeType(category);
-
-      return actual === wanted;
+      return (
+        normalizeType(item.property_type) ===
+        normalizeType(category)
+      );
     });
   };
-
-  // =====================================================
-  // REMOVE DUPLICATES
-  // =====================================================
 
   const removeDuplicates = (results) => {
     const map = new Map();
 
     results.forEach((item, index) => {
-      const key = [
-        item?.id,
-        item?.osm_id,
-        item?.name,
-        item?.latitude,
-        item?.longitude,
-        item?.location,
-        index,
-      ]
-        .filter(Boolean)
-        .join("|");
+      const key =
+        item?.id ||
+        item?.osm_id ||
+        `${item?.name}-${item?.latitude}-${item?.longitude}-${index}`;
 
       if (!map.has(key)) {
         map.set(key, item);
       }
     });
 
-    return Array.from(map.values());
+    return [...map.values()];
   };
-
-  // =====================================================
-  // GOOGLE MAPS
-  // =====================================================
 
   const getGoogleMapsUrl = (
     place,
@@ -270,23 +206,15 @@ function App() {
 
     let keyword = "PG paying guest";
 
-    if (category === "Hostel") {
-      keyword = "hostel";
-    }
-
-    if (category === "Co-Living") {
+    if (category === "Hostel") keyword = "hostel";
+    if (category === "Co-Living")
       keyword = "co living coliving";
-    }
-
-    if (category === "Flat") {
+    if (category === "Flat")
       keyword = "flat apartment";
-    }
-
-    const query = `${keyword} near ${search}`;
 
     return (
       "https://www.google.com/maps/search/?api=1&query=" +
-      encodeURIComponent(query)
+      encodeURIComponent(`${keyword} near ${search}`)
     );
   };
 
@@ -304,10 +232,6 @@ function App() {
     window.open(url, "_blank");
   };
 
-  // =====================================================
-  // PROPERTY MAP
-  // =====================================================
-
   const openMapForProperty = (item) => {
     if (item?.directions_url) {
       window.open(item.directions_url, "_blank");
@@ -318,9 +242,7 @@ function App() {
       item?.latitude !== undefined &&
       item?.longitude !== undefined &&
       item?.latitude !== null &&
-      item?.longitude !== null &&
-      item?.latitude !== "" &&
-      item?.longitude !== ""
+      item?.longitude !== null
     ) {
       const url =
         "https://www.google.com/maps/search/?api=1&query=" +
@@ -332,20 +254,11 @@ function App() {
       return;
     }
 
-    if (item?.google_maps_url) {
-      window.open(item.google_maps_url, "_blank");
-      return;
-    }
-
     openGoogleMaps(
       item?.location || searchLocation || location,
       item?.property_type || selectedCategory
     );
   };
-
-  // =====================================================
-  // SEARCH KEYWORDS
-  // =====================================================
 
   const createSearchKeywords = (place, category) => {
     const original = String(place || "").trim();
@@ -360,7 +273,8 @@ function App() {
       if (
         clean &&
         !keywords.some(
-          (x) => x.toLowerCase() === clean.toLowerCase()
+          (x) =>
+            x.toLowerCase() === clean.toLowerCase()
         )
       ) {
         keywords.push(clean);
@@ -369,7 +283,6 @@ function App() {
 
     add(original);
     add(original.replace(/\s+/g, " "));
-
     add(
       original
         .replace(/,/g, " ")
@@ -377,22 +290,11 @@ function App() {
         .trim()
     );
 
-    const parts = original
+    original
       .split(",")
       .map((x) => x.trim())
-      .filter(Boolean);
-
-    parts.forEach(add);
-
-    const words = original
-      .split(/\s+/)
-      .map((x) => x.trim())
-      .filter(Boolean);
-
-    if (words.length > 1) {
-      add(words.slice(0, -1).join(" "));
-      add(words.slice(1).join(" "));
-    }
+      .filter(Boolean)
+      .forEach(add);
 
     if (category === "PG") {
       add(`${original} PG`);
@@ -413,17 +315,20 @@ function App() {
       add(`${original} apartment`);
     }
 
-    return keywords.slice(0, 10);
+    return keywords.slice(0, 8);
   };
 
-  // =====================================================
-  // DATABASE SEARCH
-  // =====================================================
-
-  const searchDatabase = async (place, category) => {
+  const searchDatabase = async (
+    place,
+    category
+  ) => {
     const url =
-      `${API_URL}/pg?location=${encodeURIComponent(place)}` +
-      `&property_type=${encodeURIComponent(category)}`;
+      `${API_URL}/pg?location=${encodeURIComponent(
+        place
+      )}` +
+      `&property_type=${encodeURIComponent(
+        category
+      )}`;
 
     try {
       const response = await fetchWithTimeout(
@@ -436,35 +341,30 @@ function App() {
         12000
       );
 
-      if (!response.ok) {
-        return [];
-      }
+      if (!response.ok) return [];
 
       const data = await response.json();
 
-      let results = normalizeResults(data);
-
-      results = filterCategory(results, category);
-
-      return results;
-    } catch (error) {
-      console.error(
-        "DATABASE SEARCH ERROR:",
-        error
+      return filterCategory(
+        normalizeResults(data),
+        category
       );
-
+    } catch {
       return [];
     }
   };
 
-  // =====================================================
-  // REAL OSM SEARCH
-  // =====================================================
-
-  const searchRealPG = async (place, category) => {
+  const searchRealPG = async (
+    place,
+    category
+  ) => {
     const url =
-      `${API_URL}/search-real-pg?location=${encodeURIComponent(place)}` +
-      `&property_type=${encodeURIComponent(category)}`;
+      `${API_URL}/search-real-pg?location=${encodeURIComponent(
+        place
+      )}` +
+      `&property_type=${encodeURIComponent(
+        category
+      )}`;
 
     try {
       const response = await fetchWithTimeout(
@@ -477,30 +377,18 @@ function App() {
         30000
       );
 
-      if (!response.ok) {
-        return [];
-      }
+      if (!response.ok) return [];
 
       const data = await response.json();
 
-      let results = normalizeResults(data);
-
-      results = filterCategory(results, category);
-
-      return results;
-    } catch (error) {
-      console.error(
-        "REAL SEARCH ERROR:",
-        error
+      return filterCategory(
+        normalizeResults(data),
+        category
       );
-
+    } catch {
       return [];
     }
   };
-
-  // =====================================================
-  // MAIN SEARCH
-  // =====================================================
 
   const searchLocationData = async (
     customLocation = null,
@@ -528,98 +416,61 @@ function App() {
     setProperties([]);
     setSearchLocation(place);
 
-    const databaseResults =
-      await searchDatabase(
+    let results = await searchDatabase(
+      place,
+      category
+    );
+
+    if (results.length === 0) {
+      results = await searchRealPG(
         place,
         category
       );
-
-    if (databaseResults.length > 0) {
-      const unique =
-        removeDuplicates(databaseResults);
-
-      setProperties(unique);
-
-      setMessage(
-        `${unique.length} ${category} found in Smart PG database near ${place}.`
-      );
-
-      setLoading(false);
-      return;
     }
 
-    let realResults =
-      await searchRealPG(
+    if (results.length === 0) {
+      const keywords = createSearchKeywords(
         place,
         category
       );
 
-    if (realResults.length === 0) {
-      const keywords =
-        createSearchKeywords(
-          place,
+      for (const keyword of keywords) {
+        results = await searchRealPG(
+          keyword,
           category
         );
 
-      for (const keyword of keywords) {
-        const results =
-          await searchRealPG(
-            keyword,
-            category
-          );
-
-        if (results.length > 0) {
-          realResults = results;
-          break;
-        }
+        if (results.length > 0) break;
       }
     }
 
-    if (realResults.length > 0) {
-      const unique =
-        removeDuplicates(realResults);
+    const unique = removeDuplicates(results);
 
-      setProperties(unique);
+    setProperties(unique);
 
+    if (unique.length > 0) {
       setMessage(
-        `${unique.length} real mapped ${category} place(s) found near ${place}.`
+        `${unique.length} ${category} place(s) found near ${place}.`
       );
-
-      setLoading(false);
-      return;
+    } else {
+      setMessage(
+        `No ${category} was found near ${place}. You can search directly on Google Maps.`
+      );
     }
-
-    setProperties([]);
-
-    setMessage(
-      `No ${category} was found in Smart PG or OpenStreetMap near ${place}.`
-    );
 
     setLoading(false);
   };
 
-  // =====================================================
-  // CATEGORY
-  // =====================================================
-
   const handleCategory = (category) => {
     setSelectedCategory(category);
-
     setProperties([]);
     setMessage("");
     setError("");
 
     if (location.trim()) {
-      searchLocationData(
-        location,
-        category
-      );
+      searchLocationData(location, category);
     }
   };
-
-  // =====================================================
-  // MY LOCATION
-  // =====================================================
 
   const useMyLocation = () => {
     if (!navigator.geolocation) {
@@ -637,20 +488,13 @@ function App() {
       async (position) => {
         const latitude =
           position.coords.latitude;
-
         const longitude =
           position.coords.longitude;
 
         try {
-          const url =
-            `${API_URL}/reverse-location?latitude=` +
-            encodeURIComponent(latitude) +
-            `&longitude=` +
-            encodeURIComponent(longitude);
-
           const response =
             await fetchWithTimeout(
-              url,
+              `${API_URL}/reverse-location?latitude=${latitude}&longitude=${longitude}`,
               {
                 headers: {
                   Accept: "application/json",
@@ -659,16 +503,13 @@ function App() {
               12000
             );
 
-          let place =
-            `${latitude}, ${longitude}`;
+          let place = `${latitude}, ${longitude}`;
 
           if (response.ok) {
-            const data =
-              await response.json();
+            const data = await response.json();
 
             if (data?.display_name) {
-              place =
-                data.display_name;
+              place = data.display_name;
             }
           }
 
@@ -678,16 +519,13 @@ function App() {
             place,
             selectedCategory
           );
-        } catch (error) {
-          console.error(error);
+        } catch {
+          const place = `${latitude}, ${longitude}`;
 
-          const coords =
-            `${latitude}, ${longitude}`;
-
-          setLocation(coords);
+          setLocation(place);
 
           await searchLocationData(
-            coords,
+            place,
             selectedCategory
           );
         } finally {
@@ -696,7 +534,6 @@ function App() {
       },
       () => {
         setLocationLoading(false);
-
         setError(
           "Location permission denied. Please enter your location manually."
         );
@@ -708,10 +545,6 @@ function App() {
       }
     );
   };
-
-  // =====================================================
-  // FILTERS
-  // =====================================================
 
   const resetFilters = () => {
     setPgType("All");
@@ -726,10 +559,9 @@ function App() {
         pgType !== "All" &&
         item?.pg_type &&
         String(item.pg_type).toLowerCase() !==
-          String(pgType).toLowerCase()
-      ) {
+          pgType.toLowerCase()
+      )
         return false;
-      }
 
       if (
         foodType !== "All" &&
@@ -737,9 +569,8 @@ function App() {
         !String(item.food_type)
           .toLowerCase()
           .includes(foodType.toLowerCase())
-      ) {
+      )
         return false;
-      }
 
       if (
         maxRent &&
@@ -747,9 +578,8 @@ function App() {
         item?.rent !== undefined &&
         item?.rent !== "" &&
         Number(item.rent) > Number(maxRent)
-      ) {
+      )
         return false;
-      }
 
       if (hygiene === "Good") {
         const rating = Number(
@@ -781,10 +611,6 @@ function App() {
     maxRent,
   ]);
 
-  // =====================================================
-  // CATEGORY COUNTS
-  // =====================================================
-
   const categoryCounts = useMemo(() => {
     const counts = {
       PG: 0,
@@ -794,34 +620,19 @@ function App() {
     };
 
     properties.forEach((item) => {
-      const type =
-        normalizeType(
-          item?.property_type
-        );
+      const type = normalizeType(
+        item?.property_type
+      );
 
-      if (type === "pg") {
-        counts.PG++;
-      }
-
-      if (type === "hostel") {
-        counts.Hostel++;
-      }
-
-      if (type === "co-living") {
+      if (type === "pg") counts.PG++;
+      if (type === "hostel") counts.Hostel++;
+      if (type === "co-living")
         counts["Co-Living"]++;
-      }
-
-      if (type === "flat") {
-        counts.Flat++;
-      }
+      if (type === "flat") counts.Flat++;
     });
 
     return counts;
   }, [properties]);
-
-  // =====================================================
-  // COMPLAINT
-  // =====================================================
 
   const submitComplaint = (e) => {
     e.preventDefault();
@@ -874,49 +685,26 @@ function App() {
     }
   };
 
-  // =====================================================
-  // REFRESH
-  // =====================================================
-
-  const refreshSearch = () => {
-    if (searchLocation.trim()) {
-      searchLocationData(
-        searchLocation,
-        selectedCategory
-      );
-    } else if (location.trim()) {
-      searchLocationData(
-        location,
-        selectedCategory
-      );
-    } else {
-      setError(
-        "Please enter a location first."
-      );
-    }
+  const logout = () => {
+    localStorage.removeItem("smart_pg_user");
+    setUser("");
+    setProperties([]);
+    setSearchLocation("");
+    setLocation("");
   };
-
-  // =====================================================
-  // LOGIN SCREEN
-  // =====================================================
 
   if (!user) {
     return (
-      <div className="login-page">
-
+      <>
         <style>{`
-
           * {
             box-sizing: border-box;
           }
 
           body {
             margin: 0;
-            font-family:
-              Inter,
-              Arial,
-              Helvetica,
-              sans-serif;
+            font-family: Arial, Helvetica, sans-serif;
+            background: #f4f7fb;
           }
 
           .login-page {
@@ -926,89 +714,71 @@ function App() {
             justify-content: center;
             padding: 20px;
             background:
-              radial-gradient(
-                circle at top,
-                #eaf2ff,
-                #f7f9fc 55%
-              );
+              radial-gradient(circle at top, #eaf2ff, transparent 55%),
+              #f4f7fb;
           }
 
           .login-card {
             width: 100%;
             max-width: 430px;
             background: white;
-            padding: 36px;
-            border-radius: 20px;
+            padding: 35px;
+            border-radius: 22px;
+            box-shadow: 0 15px 50px rgba(20,40,80,.12);
             border: 1px solid #e4e9f1;
-            box-shadow:
-              0 15px 45px
-              rgba(30,45,75,.10);
           }
 
           .login-logo {
             width: 65px;
             height: 65px;
-            margin: auto;
             border-radius: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
+            margin: auto;
             background: #eef4ff;
             font-size: 34px;
           }
 
           .login-card h1 {
             text-align: center;
-            margin: 16px 0 7px;
+            margin: 15px 0 8px;
           }
 
           .login-subtitle {
             text-align: center;
-            color: #68738a;
-            margin-bottom: 25px;
+            color: #69758a;
+            line-height: 1.5;
+            margin-bottom: 28px;
           }
 
-          .login-label {
+          .login-card label {
             display: block;
+            margin: 14px 0 7px;
             font-weight: 700;
-            margin-bottom: 7px;
           }
 
-          .login-input {
+          .login-card input {
             width: 100%;
-            padding: 13px 14px;
-            border: 1px solid #d9e0eb;
+            padding: 13px;
+            border: 1px solid #d8dfeb;
             border-radius: 10px;
-            margin-bottom: 16px;
             outline: none;
-            font-size: 15px;
           }
 
-          .login-input:focus {
-            border-color: #5578ff;
-            box-shadow:
-              0 0 0 3px
-              rgba(85,120,255,.1);
-          }
-
-          .login-error {
-            padding: 12px;
-            border-radius: 9px;
-            background: #fff1f1;
-            color: #a12d2d;
-            margin-bottom: 15px;
-            font-size: 14px;
+          .login-card input:focus {
+            border-color: #3867ff;
           }
 
           .login-btn {
             width: 100%;
+            margin-top: 20px;
             padding: 14px;
             border: none;
             border-radius: 10px;
             background: #3867ff;
             color: white;
             font-weight: 800;
-            cursor: pointer;
             font-size: 16px;
           }
 
@@ -1016,126 +786,46 @@ function App() {
             background: #2855e6;
           }
 
+          .login-error {
+            margin-top: 13px;
+            padding: 11px;
+            border-radius: 9px;
+            background: #fff0f0;
+            color: #a12d2d;
+            font-size: 14px;
+          }
+
           .demo-box {
             margin-top: 20px;
-            padding: 14px;
-            background: #f2f6ff;
+            padding: 13px;
             border-radius: 10px;
-            color: #4d5d7a;
-            text-align: center;
+            background: #f2f6ff;
+            color: #405273;
             font-size: 13px;
             line-height: 1.7;
           }
-
         `}</style>
 
-        <div className="login-card">
-
-          <div className="login-logo">
-            🏠
-          </div>
-
-          <h1>
-            Smart PG
-          </h1>
-
-          <div className="login-subtitle">
-            Login to find your perfect stay
-          </div>
-
-          <form onSubmit={handleLogin}>
-
-            <label className="login-label">
-              Email
-            </label>
-
-            <input
-              className="login-input"
-              type="email"
-              value={loginEmail}
-              onChange={(e) =>
-                setLoginEmail(e.target.value)
-              }
-              placeholder="Enter email"
-              autoComplete="email"
-            />
-
-            <label className="login-label">
-              Password
-            </label>
-
-            <input
-              className="login-input"
-              type="password"
-              value={loginPassword}
-              onChange={(e) =>
-                setLoginPassword(e.target.value)
-              }
-              placeholder="Enter password"
-              autoComplete="current-password"
-            />
-
-            {loginError && (
-              <div className="login-error">
-                ⚠️ {loginError}
-              </div>
-            )}
-
-            <button
-              className="login-btn"
-              type="submit"
-            >
-              🔐 Login
-            </button>
-
-          </form>
-
-          <div className="demo-box">
-            <strong>Demo Login</strong>
-            <br />
-            Email: <strong>demo@smartpg.com</strong>
-            <br />
-            Password: <strong>demo123</strong>
-          </div>
-
-        </div>
-
-      </div>
+        <Login onLogin={setUser} />
+      </>
     );
   }
 
-  // =====================================================
-  // MAIN APP
-  // =====================================================
-
   return (
     <div className="app">
-
       <style>{`
+        * { box-sizing: border-box; }
 
-        * {
-          box-sizing: border-box;
-        }
-
-        html {
-          scroll-behavior: smooth;
-        }
+        html { scroll-behavior: smooth; }
 
         body {
           margin: 0;
-          font-family:
-            Inter,
-            Arial,
-            Helvetica,
-            sans-serif;
+          font-family: Inter, Arial, Helvetica, sans-serif;
           background: #f7f9fc;
           color: #172033;
         }
 
-        button,
-        input,
-        select,
-        textarea {
+        button,input,select,textarea {
           font: inherit;
         }
 
@@ -1146,10 +836,6 @@ function App() {
         button:disabled {
           opacity: .6;
           cursor: not-allowed;
-        }
-
-        .app {
-          min-height: 100vh;
         }
 
         .navbar {
@@ -1213,12 +899,7 @@ function App() {
         .hero {
           text-align: center;
           padding: 50px 20px 32px;
-          background:
-            radial-gradient(
-              circle at top,
-              #eaf2ff,
-              transparent 55%
-            );
+          background: radial-gradient(circle at top,#eaf2ff,transparent 55%);
         }
 
         .india-badge {
@@ -1232,7 +913,7 @@ function App() {
         }
 
         .hero h1 {
-          font-size: clamp(32px, 5vw, 55px);
+          font-size: clamp(32px,5vw,55px);
           margin: 17px 0 12px;
           line-height: 1.05;
         }
@@ -1245,7 +926,7 @@ function App() {
         }
 
         .container {
-          width: min(1150px, 92%);
+          width: min(1150px,92%);
           margin: auto;
         }
 
@@ -1258,9 +939,7 @@ function App() {
           border: 1px solid #e4e9f1;
           border-radius: 18px;
           padding: 24px;
-          box-shadow:
-            0 8px 30px
-            rgba(30,45,75,.05);
+          box-shadow: 0 8px 30px rgba(30,45,75,.05);
         }
 
         .section-title {
@@ -1275,8 +954,7 @@ function App() {
 
         .category-grid {
           display: grid;
-          grid-template-columns:
-            repeat(4,minmax(0,1fr));
+          grid-template-columns: repeat(4,minmax(0,1fr));
           gap: 15px;
         }
 
@@ -1351,9 +1029,7 @@ function App() {
 
         .location-input:focus {
           border-color: #5578ff;
-          box-shadow:
-            0 0 0 3px
-            rgba(85,120,255,.1);
+          box-shadow: 0 0 0 3px rgba(85,120,255,.1);
         }
 
         .primary-btn {
@@ -1425,8 +1101,7 @@ function App() {
 
         .property-grid {
           display: grid;
-          grid-template-columns:
-            repeat(3,minmax(0,1fr));
+          grid-template-columns: repeat(3,minmax(0,1fr));
           gap: 18px;
         }
 
@@ -1435,17 +1110,7 @@ function App() {
           border: 1px solid #e2e7ef;
           border-radius: 17px;
           padding: 19px;
-          box-shadow:
-            0 8px 25px
-            rgba(35,48,75,.05);
-          transition: .2s;
-        }
-
-        .property-card:hover {
-          transform: translateY(-2px);
-          box-shadow:
-            0 12px 30px
-            rgba(35,48,75,.09);
+          box-shadow: 0 8px 25px rgba(35,48,75,.05);
         }
 
         .property-top {
@@ -1524,8 +1189,7 @@ function App() {
 
         .filter-grid {
           display: grid;
-          grid-template-columns:
-            repeat(4,minmax(0,1fr));
+          grid-template-columns: repeat(4,minmax(0,1fr));
           gap: 15px;
         }
 
@@ -1552,8 +1216,7 @@ function App() {
 
         .complaint-grid {
           display: grid;
-          grid-template-columns:
-            repeat(2,minmax(0,1fr));
+          grid-template-columns: repeat(2,minmax(0,1fr));
           gap: 14px;
         }
 
@@ -1610,32 +1273,18 @@ function App() {
           margin: 8px 0;
         }
 
-        .spin {
-          display: inline-block;
-          animation:
-            spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
-
-        @media (max-width: 900px) {
+        @media(max-width:900px) {
           .category-grid,
           .property-grid {
-            grid-template-columns:
-              repeat(2,1fr);
+            grid-template-columns: repeat(2,1fr);
           }
 
           .filter-grid {
-            grid-template-columns:
-              repeat(2,1fr);
+            grid-template-columns: repeat(2,1fr);
           }
         }
 
-        @media (max-width: 650px) {
+        @media(max-width:650px) {
           .navbar {
             align-items: flex-start;
           }
@@ -1664,43 +1313,28 @@ function App() {
             flex-direction: column;
           }
         }
-
       `}</style>
 
-      {/* =====================================================
-          NAVBAR
-      ===================================================== */}
-
       <nav className="navbar">
-
         <div className="brand">
-
-          <div className="brand-icon">
-            🏠
-          </div>
-
+          <div className="brand-icon">🏠</div>
           Smart PG
-
         </div>
 
         <div className="nav-right">
-
           <span className="hello">
             Hi, {user}
           </span>
 
           <button
             className="nav-btn"
-            onClick={() => {
-              setMessage(
-                "Property owner registration will be available soon."
-              );
-
-              window.scrollTo({
-                top: document.body.scrollHeight,
-                behavior: "smooth",
-              });
-            }}
+            onClick={() =>
+              document
+                .getElementById("complaint-section")
+                ?.scrollIntoView({
+                  behavior: "smooth",
+                })
+            }
           >
             ➕ Add Property
           </button>
@@ -1711,45 +1345,26 @@ function App() {
           >
             🚪 Logout
           </button>
-
         </div>
-
       </nav>
 
-      {/* =====================================================
-          HERO
-      ===================================================== */}
-
       <section className="hero">
-
         <div className="india-badge">
           🇮🇳 INDIA-WIDE ACCOMMODATION
         </div>
 
-        <h1>
-          Find Your Perfect Stay
-        </h1>
+        <h1>Find Your Perfect Stay</h1>
 
         <p>
           Search PG, Hostel, Co-Living and Flat
           anywhere in India. Enter any city, area,
-          landmark or PIN code. Smart PG checks its
-          own database first and then searches
-          real mapped accommodation data.
+          landmark or PIN code.
         </p>
-
       </section>
 
       <main className="container">
-
-        {/* =====================================================
-            CATEGORY
-        ===================================================== */}
-
         <section className="section">
-
           <div className="section-card">
-
             <h2 className="section-title">
               1️⃣ Choose Accommodation Type
             </h2>
@@ -1759,19 +1374,15 @@ function App() {
             </p>
 
             <div className="category-grid">
-
               {CATEGORIES.map((category) => (
-
                 <button
                   key={category.key}
                   className={
                     "category-card " +
-                    (
-                      selectedCategory ===
-                      category.key
-                        ? "selected"
-                        : ""
-                    )
+                    (selectedCategory ===
+                    category.key
+                      ? "selected"
+                      : "")
                   }
                   onClick={() =>
                     handleCategory(
@@ -1779,7 +1390,6 @@ function App() {
                     )
                   }
                 >
-
                   <div className="category-icon">
                     {category.icon}
                   </div>
@@ -1797,35 +1407,21 @@ function App() {
                       category.key
                     ] || 0}
                   </span>
-
                 </button>
-
               ))}
-
             </div>
 
             <div className="selected-info">
-
-              ✅ Selected:
-              {" "}
+              ✅ Selected:{" "}
               <strong>
                 {selectedCategory}
               </strong>
-
             </div>
-
           </div>
-
         </section>
 
-        {/* =====================================================
-            SEARCH
-        ===================================================== */}
-
         <section className="section">
-
           <div className="section-card">
-
             <h2 className="section-title">
               2️⃣ Search Location
             </h2>
@@ -1835,7 +1431,6 @@ function App() {
             </p>
 
             <div className="search-row">
-
               <input
                 className="location-input"
                 value={location}
@@ -1843,11 +1438,10 @@ function App() {
                   setLocation(e.target.value)
                 }
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  if (e.key === "Enter")
                     searchLocationData();
-                  }
                 }}
-                placeholder="Example: Bangalore, Koramangala, HSR Layout, 560034..."
+                placeholder="Example: Bangalore, Koramangala, HSR Layout, 560034"
               />
 
               <button
@@ -1857,36 +1451,21 @@ function App() {
                 }
                 disabled={loading}
               >
-
-                {loading ? (
-                  <>
-                    <span className="spin">
-                      ⏳
-                    </span>
-                    {" "}Searching...
-                  </>
-                ) : (
-                  <>
-                    🔎 Search
-                  </>
-                )}
-
+                {loading
+                  ? "⏳ Searching..."
+                  : "🔎 Search"}
               </button>
-
             </div>
 
             <div className="search-actions">
-
               <button
                 className="secondary-btn"
                 onClick={useMyLocation}
                 disabled={locationLoading}
               >
-
                 {locationLoading
                   ? "📍 Getting Location..."
                   : "📍 Use My Location"}
-
               </button>
 
               <button
@@ -1897,29 +1476,20 @@ function App() {
               >
                 🗺️ Open Google Maps
               </button>
-
             </div>
 
             <div className="search-note">
-
-              🟢 Search order:
-              Smart PG Database → Real OpenStreetMap →
-              keyword variations.
-
+              🟢 Smart PG Database → Real
+              OpenStreetMap → Google Maps
             </div>
 
             {searchLocation && (
-
               <div className="search-note">
-
-                📍 Searching:
-                {" "}
+                📍 Searching:{" "}
                 <strong>
                   {searchLocation}
                 </strong>
-
               </div>
-
             )}
 
             {message && (
@@ -1933,75 +1503,55 @@ function App() {
                 ⚠️ {error}
               </div>
             )}
-
           </div>
-
         </section>
 
-        {/* =====================================================
-            RESULTS
-        ===================================================== */}
-
         <section className="section">
-
           <div className="results-header">
-
             <div>
-
-              <h2>
-                Available Properties
-              </h2>
+              <h2>Available Properties</h2>
 
               <div className="search-note">
-
-                Showing
-                {" "}
+                Showing{" "}
                 <strong>
                   {filteredProperties.length}
-                </strong>
-                {" "}
+                </strong>{" "}
                 {selectedCategory}
-
                 {searchLocation
                   ? ` near ${searchLocation}`
                   : ""}
-
               </div>
-
             </div>
 
             <button
               className="secondary-btn"
-              onClick={refreshSearch}
+              onClick={() =>
+                searchLocationData(
+                  searchLocation || location,
+                  selectedCategory
+                )
+              }
             >
               🔄 Refresh
             </button>
-
           </div>
 
           {loading ? (
-
             <div className="empty">
-
               <div className="empty-icon">
                 🔎
               </div>
 
-              <h3>
-                Searching...
-              </h3>
+              <h3>Searching...</h3>
 
               <p>
-                Checking Smart PG database and
-                real mapped accommodation.
+                Checking Smart PG and real mapped
+                accommodation.
               </p>
-
             </div>
-
-          ) : filteredProperties.length === 0 ? (
-
+          ) : filteredProperties.length ===
+            0 ? (
             <div className="empty">
-
               <div className="empty-icon">
                 🗺️
               </div>
@@ -2013,15 +1563,12 @@ function App() {
               </h3>
 
               <p>
-
                 {searchLocation
                   ? `No ${selectedCategory} was found near ${searchLocation}.`
-                  : "Enter any city, area, landmark or PIN code above."}
-
+                  : "Enter a location above."}
               </p>
 
               {searchLocation && (
-
                 <button
                   className="map-btn"
                   onClick={() =>
@@ -2033,18 +1580,12 @@ function App() {
                 >
                   🗺️ Search on Google Maps
                 </button>
-
               )}
-
             </div>
-
           ) : (
-
             <div className="property-grid">
-
               {filteredProperties.map(
                 (item, index) => (
-
                   <div
                     className="property-card"
                     key={
@@ -2053,9 +1594,7 @@ function App() {
                       `${item?.name}-${index}`
                     }
                   >
-
                     <div className="property-top">
-
                       <h3 className="property-name">
                         {item?.name ||
                           "Accommodation"}
@@ -2065,67 +1604,48 @@ function App() {
                         {item?.property_type ||
                           selectedCategory}
                       </span>
-
                     </div>
 
                     <div className="location-text">
-
                       📍{" "}
                       {item?.location ||
                         item?.address ||
                         "Location available on map"}
-
                     </div>
 
-                    {item?.distance_km !==
-                      undefined &&
-                      item?.distance_km !==
-                        null && (
-
-                        <div className="distance">
-
-                          📏{" "}
-                          {Number(
-                            item.distance_km
-                          ).toFixed(2)}
-                          {" "}km away
-
-                        </div>
-
+                    {item?.distance_km !=
+                      null && (
+                      <div className="distance">
+                        📏{" "}
+                        {Number(
+                          item.distance_km
+                        ).toFixed(2)}
+                        km away
+                      </div>
                     )}
 
-                    {item?.rent !== null &&
-                      item?.rent !==
-                        undefined &&
+                    {item?.rent != null &&
                       item?.rent !== "" && (
-
                         <div className="rent">
-
                           ₹
                           {Number(
                             item.rent
                           ).toLocaleString(
                             "en-IN"
                           )}
-
                           /month
-
                         </div>
-
-                    )}
+                      )}
 
                     <div className="details">
-
                       <div>
-                        👤 Suitable for:
-                        {" "}
+                        👤 Suitable for:{" "}
                         {item?.pg_type ||
                           "Unisex"}
                       </div>
 
                       <div>
-                        🍱 Food:
-                        {" "}
+                        🍱 Food:{" "}
                         {item?.food_type ||
                           "Not specified"}
                       </div>
@@ -2154,16 +1674,9 @@ function App() {
                         </div>
                       )}
 
-                      {item?.geyser_available && (
-                        <div>
-                          🚿 Geyser Available
-                        </div>
-                      )}
-
                       {item?.room_type && (
                         <div>
-                          🛏️ Room:
-                          {" "}
+                          🛏️ Room:{" "}
                           {item.room_type}
                         </div>
                       )}
@@ -2172,8 +1685,7 @@ function App() {
                         item?.cleaning_rating || 0
                       ) > 0 && (
                         <div>
-                          🧹 Cleaning:
-                          {" "}
+                          🧹 Cleaning:{" "}
                           {item.cleaning_rating}/5
                         </div>
                       )}
@@ -2182,24 +1694,20 @@ function App() {
                         item?.hygiene_rating || 0
                       ) > 0 && (
                         <div>
-                          🧼 Hygiene:
-                          {" "}
+                          🧼 Hygiene:{" "}
                           {item.hygiene_rating}/5
                         </div>
                       )}
 
                       {item?.source && (
                         <div>
-                          🌐 Source:
-                          {" "}
+                          🌐 Source:{" "}
                           {item.source}
                         </div>
                       )}
-
                     </div>
 
                     <div className="property-actions">
-
                       <button
                         className="map-btn"
                         onClick={() =>
@@ -2212,7 +1720,6 @@ function App() {
                       </button>
 
                       {item?.website && (
-
                         <button
                           className="secondary-btn"
                           onClick={() =>
@@ -2224,30 +1731,17 @@ function App() {
                         >
                           🌐 Website
                         </button>
-
                       )}
-
                     </div>
-
                   </div>
-
                 )
               )}
-
             </div>
-
           )}
-
         </section>
 
-        {/* =====================================================
-            FILTERS
-        ===================================================== */}
-
         <section className="section">
-
           <div className="section-card">
-
             <h2 className="section-title">
               🔎 Stay Filters
             </h2>
@@ -2257,12 +1751,8 @@ function App() {
             </p>
 
             <div className="filter-grid">
-
               <div className="filter">
-
-                <label>
-                  Suitable For
-                </label>
+                <label>Suitable For</label>
 
                 <select
                   value={pgType}
@@ -2270,32 +1760,15 @@ function App() {
                     setPgType(e.target.value)
                   }
                 >
-
-                  <option value="All">
-                    All
-                  </option>
-
-                  <option value="Boys">
-                    Boys
-                  </option>
-
-                  <option value="Girls">
-                    Girls
-                  </option>
-
-                  <option value="Unisex">
-                    Unisex
-                  </option>
-
+                  <option>All</option>
+                  <option>Boys</option>
+                  <option>Girls</option>
+                  <option>Unisex</option>
                 </select>
-
               </div>
 
               <div className="filter">
-
-                <label>
-                  Food
-                </label>
+                <label>Food</label>
 
                 <select
                   value={foodType}
@@ -2303,28 +1776,14 @@ function App() {
                     setFoodType(e.target.value)
                   }
                 >
-
-                  <option value="All">
-                    All
-                  </option>
-
-                  <option value="Veg">
-                    Veg
-                  </option>
-
-                  <option value="Non-Veg">
-                    Non-Veg
-                  </option>
-
+                  <option>All</option>
+                  <option>Veg</option>
+                  <option>Non-Veg</option>
                 </select>
-
               </div>
 
               <div className="filter">
-
-                <label>
-                  Hygiene
-                </label>
+                <label>Hygiene</label>
 
                 <select
                   value={hygiene}
@@ -2332,28 +1791,16 @@ function App() {
                     setHygiene(e.target.value)
                   }
                 >
-
-                  <option value="All">
-                    All
-                  </option>
-
-                  <option value="Good">
-                    Good hygiene
-                  </option>
-
-                  <option value="Highly hygienic">
+                  <option>All</option>
+                  <option>Good</option>
+                  <option>
                     Highly hygienic
                   </option>
-
                 </select>
-
               </div>
 
               <div className="filter">
-
-                <label>
-                  Maximum Rent
-                </label>
+                <label>Maximum Rent</label>
 
                 <input
                   type="number"
@@ -2364,36 +1811,28 @@ function App() {
                   }
                   placeholder="₹ Maximum"
                 />
-
               </div>
-
             </div>
 
             <div className="search-actions">
-
               <button
                 className="secondary-btn"
                 onClick={resetFilters}
               >
                 ↩ Reset Filters
               </button>
-
             </div>
-
           </div>
-
         </section>
 
-        {/* =====================================================
-            COMPLAINT
-        ===================================================== */}
-
-        <section className="section">
-
+        <section
+          className="section"
+          id="complaint-section"
+        >
           <div className="section-card complaint">
-
             <h2 className="section-title">
-              🚨 Lost / Robbed / Stolen Item Complaint
+              🚨 Lost / Robbed / Stolen Item
+              Complaint
             </h2>
 
             <p className="section-subtitle">
@@ -2402,14 +1841,9 @@ function App() {
             </p>
 
             <form onSubmit={submitComplaint}>
-
               <div className="complaint-grid">
-
                 <div className="complaint-field">
-
-                  <label>
-                    Complaint Type
-                  </label>
+                  <label>Complaint Type</label>
 
                   <select
                     value={complaintType}
@@ -2419,29 +1853,22 @@ function App() {
                       )
                     }
                   >
-
                     <option>
                       Robbed / Stolen Item
                     </option>
-
                     <option>
                       Lost Item
                     </option>
-
                     <option>
                       Missing Item
                     </option>
-
                     <option>
                       Security Complaint
                     </option>
-
                   </select>
-
                 </div>
 
                 <div className="complaint-field">
-
                   <label>
                     Property / PG Name
                   </label>
@@ -2455,19 +1882,15 @@ function App() {
                     }
                     placeholder="Enter property name"
                   />
-
                 </div>
 
                 <div className="complaint-field full">
-
                   <label>
                     Describe the incident
                   </label>
 
                   <textarea
-                    value={
-                      complaintDescription
-                    }
+                    value={complaintDescription}
                     onChange={(e) =>
                       setComplaintDescription(
                         e.target.value
@@ -2475,9 +1898,7 @@ function App() {
                     }
                     placeholder="Describe what happened..."
                   />
-
                 </div>
-
               </div>
 
               <button
@@ -2492,21 +1913,12 @@ function App() {
                   {complaintMessage}
                 </div>
               )}
-
             </form>
-
           </div>
-
         </section>
-
       </main>
 
-      {/* =====================================================
-          FOOTER
-      ===================================================== */}
-
       <footer>
-
         <div
           style={{
             fontSize: 22,
@@ -2521,12 +1933,8 @@ function App() {
           across India.
         </p>
 
-        <p>
-          © 2026 Smart PG
-        </p>
-
+        <p>© 2026 Smart PG</p>
       </footer>
-
     </div>
   );
 }
