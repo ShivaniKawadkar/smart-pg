@@ -1,28 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Search,
-  RefreshCw,
-  Map,
-  Navigation,
-  Plus,
-  X,
-  Save,
-  Trash2,
-  Edit,
-  Home,
-  Building2,
-  BedDouble,
-  LogOut,
-  User,
-  MapPin,
-  LocateFixed,
-  Phone,
-  Globe,
-  Image as ImageIcon,
+  Search, RefreshCw, Map, Navigation, Plus, X, Save, Trash2,
+  Edit, Home, Building2, BedDouble, LogOut, User, MapPin,
+  LocateFixed, Phone, Globe, Image as ImageIcon
 } from "lucide-react";
 
-const API_URL = "https://smart-pg-backend-shivani.onrender.com";
-
+const API_URL = "https://shivani-smart-pg.onrender.com";
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org";
 
 const OVERPASS_URLS = [
@@ -71,7 +54,6 @@ function App() {
   });
 
   const [loginName, setLoginName] = useState("");
-
   const [pgs, setPgs] = useState([]);
   const [realPGs, setRealPGs] = useState([]);
 
@@ -80,15 +62,13 @@ function App() {
   const [locationLoading, setLocationLoading] = useState(false);
 
   const [error, setError] = useState("");
-
   const [search, setSearch] = useState("");
-  const [propertyType, setPropertyType] = useState("All");
+  const [propertyType, setPropertyType] = useState("PG");
   const [pgType, setPgType] = useState("All");
   const [foodType, setFoodType] = useState("All");
   const [maxRent, setMaxRent] = useState("");
 
   const [currentLocation, setCurrentLocation] = useState(null);
-  const [mapLocation, setMapLocation] = useState(null);
   const [locationName, setLocationName] = useState("");
 
   const [showForm, setShowForm] = useState(false);
@@ -109,7 +89,7 @@ function App() {
     const loggedUser = {
       name,
       email:
-        name.toLowerCase().replace(/\s+/g, "") + "@smartpg.com",
+        `${name.toLowerCase().replace(/\s+/g, "")}@smartpg.com`,
     };
 
     localStorage.setItem(
@@ -125,26 +105,73 @@ function App() {
     setUser(null);
   };
 
-  const fetchPGs = async () => {
+  /* =========================================================
+     DATABASE PG SEARCH
+     IMPORTANT:
+     This is the FIRST search.
+     Map search is NOT automatically called.
+  ========================================================= */
+
+  const fetchPGs = async (customLocation = "") => {
     try {
       setLoading(true);
       setError("");
 
-      const response = await fetch(`${API_URL}/pg`);
+      const location = customLocation.trim() || search.trim();
+
+      const params = new URLSearchParams();
+
+      if (location) {
+        params.append("location", location);
+      }
+
+      if (propertyType && propertyType !== "All") {
+        params.append("property_type", propertyType);
+      }
+
+      if (pgType && pgType !== "All") {
+        params.append("pg_type", pgType);
+      }
+
+      if (foodType && foodType !== "All") {
+        params.append("food_type", foodType);
+      }
+
+      if (maxRent) {
+        params.append("max_rent", maxRent);
+      }
+
+      const url = `${API_URL}/pg${
+        params.toString() ? `?${params.toString()}` : ""
+      }`;
+
+      const response = await fetch(url);
 
       if (!response.ok) {
-        throw new Error(`Backend error: ${response.status}`);
+        throw new Error(`Server error: ${response.status}`);
       }
 
       const data = await response.json();
 
-      setPgs(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error(err);
-      setError(
-        "Backend se properties load nahi ho pa rahi hain."
-      );
+      const results = Array.isArray(data) ? data : [];
+
+      setPgs(results);
+
+      // IMPORTANT:
+      // Every new PG search hides map results.
+      setRealPGs([]);
+
+      if (location) {
+        setLocationName(location);
+      }
+
+      return results;
+    } catch (e) {
+      console.error(e);
+      setError(e.message || "Failed to search PGs");
       setPgs([]);
+      setRealPGs([]);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -152,9 +179,13 @@ function App() {
 
   useEffect(() => {
     if (user) {
-      fetchPGs();
+      fetchPGs("");
     }
   }, [user]);
+
+  /* =========================================================
+     REVERSE GEOCODING
+  ========================================================= */
 
   const reverseGeocode = async (lat, lon) => {
     try {
@@ -179,6 +210,13 @@ function App() {
     }
   };
 
+  /* =========================================================
+     GPS
+     
+     GPS location is first searched in Smart PG database.
+     Map is NOT automatically opened.
+  ========================================================= */
+
   const getCurrentLocation = () => {
     if (!navigator.geolocation) {
       alert("GPS is not supported by this browser.");
@@ -186,40 +224,44 @@ function App() {
     }
 
     setLocationLoading(true);
+    setError("");
 
     navigator.geolocation.getCurrentPosition(
       async ({ coords }) => {
-        const location = {
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-        };
+        try {
+          const location = {
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+          };
 
-        setCurrentLocation(location);
-        setMapLocation(location);
+          setCurrentLocation(location);
 
-        const name = await reverseGeocode(
-          coords.latitude,
-          coords.longitude
-        );
+          const name = await reverseGeocode(
+            coords.latitude,
+            coords.longitude
+          );
 
-        setLocationName(name);
-        setSearch(
-          name
+          setLocationName(name);
+
+          const shortLocation = name
             .split(",")
-            .slice(0, 3)
-            .join(", ")
-        );
+            .slice(0, 4)
+            .join(", ");
 
-        await searchRealPGs(location);
+          setSearch(shortLocation);
 
-        setLocationLoading(false);
+          // FIRST DATABASE SEARCH
+          await fetchPGs(shortLocation);
+        } finally {
+          setLocationLoading(false);
+        }
       },
       (err) => {
         setLocationLoading(false);
 
         if (err.code === 1) {
           alert(
-            "Location permission denied. Chrome address bar se Location Allow karo."
+            "Location permission denied. Browser address bar se Location Allow karo."
           );
         } else {
           alert("GPS location nahi mil pa rahi hai.");
@@ -233,14 +275,51 @@ function App() {
     );
   };
 
-  const getImageFromTags = (tags = {}) => {
-    if (tags.image) return tags.image;
+  /* =========================================================
+     SEARCH BUTTON
+     
+     FIRST Smart PG database.
+     NEVER directly opens map.
+  ========================================================= */
 
-    if (tags["image:url"]) {
+  const handleSearch = async () => {
+    const location = search.trim();
+
+    if (!location) {
+      alert("Please enter a location first.");
+      return;
+    }
+
+    const results = await fetchPGs(location);
+
+    if (results.length > 0) {
+      // PG FOUND
+      // Nothing else needed.
+      return;
+    }
+
+    // No PG found.
+    // Map button will appear below.
+    setRealPGs([]);
+  };
+
+  /* =========================================================
+     REAL MAP / OPENSTREETMAP SEARCH
+     
+     ONLY called when user clicks:
+     "Search Nearby on Map"
+  ========================================================= */
+
+  const getImageFromTags = (tags) => {
+    if (tags?.image) {
+      return tags.image;
+    }
+
+    if (tags?.["image:url"]) {
       return tags["image:url"];
     }
 
-    if (tags.wikimedia_commons) {
+    if (tags?.wikimedia_commons) {
       const value = tags.wikimedia_commons
         .replace(/^File:/i, "")
         .trim();
@@ -254,7 +333,7 @@ function App() {
   };
 
   const runOverpass = async (query) => {
-    let lastError = null;
+    let lastError;
 
     for (const url of OVERPASS_URLS) {
       try {
@@ -268,10 +347,10 @@ function App() {
         }
 
         lastError = new Error(
-          `Overpass error ${response.status}`
+          `Map service error: ${response.status}`
         );
-      } catch (err) {
-        lastError = err;
+      } catch (e) {
+        lastError = e;
       }
     }
 
@@ -281,23 +360,24 @@ function App() {
     );
   };
 
-  const searchRealPGs = async (coords = null) => {
+  const searchRealPGs = async () => {
     const location = search.trim();
 
-    if (!location && !coords) {
-      alert("Pehle city, area ya location enter karo.");
+    if (!location) {
+      alert("Please enter a location first.");
       return;
     }
 
     try {
       setRealLoading(true);
 
-      let lat;
-      let lon;
+      let latitude;
+      let longitude;
 
-      if (coords) {
-        lat = Number(coords.latitude);
-        lon = Number(coords.longitude);
+      // If GPS exists, use GPS coordinates.
+      if (currentLocation) {
+        latitude = currentLocation.latitude;
+        longitude = currentLocation.longitude;
       } else {
         const response = await fetch(
           `${NOMINATIM_URL}/search?format=jsonv2&limit=1&q=${encodeURIComponent(
@@ -318,104 +398,46 @@ function App() {
 
         if (!data.length) {
           alert(
-            "Location nahi mili. Example: Bangalore, HSR Layout, Koramangala"
+            "Location not found. Try Bangalore, HSR Layout, Koramangala etc."
           );
-          setRealPGs([]);
           return;
         }
 
-        lat = Number(data[0].lat);
-        lon = Number(data[0].lon);
+        latitude = Number(data[0].lat);
+        longitude = Number(data[0].lon);
 
         setLocationName(
           data[0].display_name || location
         );
       }
 
-      const selectedType = propertyType;
       const radius = 7000;
 
-      let categoryQuery = `
-        (
-          node["tourism"="hostel"](around:${radius},${lat},${lon});
-          way["tourism"="hostel"](around:${radius},${lat},${lon});
-          relation["tourism"="hostel"](around:${radius},${lat},${lon});
-
-          node["amenity"="hostel"](around:${radius},${lat},${lon});
-          way["amenity"="hostel"](around:${radius},${lat},${lon});
-
-          node["tourism"="guest_house"](around:${radius},${lat},${lon});
-          way["tourism"="guest_house"](around:${radius},${lat},${lon});
-
-          node["tourism"="hotel"](around:${radius},${lat},${lon});
-          way["tourism"="hotel"](around:${radius},${lat},${lon});
-
-          node["building"="apartments"](around:${radius},${lat},${lon});
-          way["building"="apartments"](around:${radius},${lat},${lon});
-
-          node["name"~"PG|Paying Guest|Hostel|Hostel",i](around:${radius},${lat},${lon});
-          way["name"~"PG|Paying Guest|Hostel|Hostel",i](around:${radius},${lat},${lon});
-
-          node["name"~"co.?living|coliving",i](around:${radius},${lat},${lon});
-          way["name"~"co.?living|coliving",i](around:${radius},${lat},${lon});
-        );
-      `;
-
-      if (selectedType === "Hostel") {
-        categoryQuery = `
-          (
-            node["tourism"="hostel"](around:${radius},${lat},${lon});
-            way["tourism"="hostel"](around:${radius},${lat},${lon});
-            relation["tourism"="hostel"](around:${radius},${lat},${lon});
-
-            node["amenity"="hostel"](around:${radius},${lat},${lon});
-            way["amenity"="hostel"](around:${radius},${lat},${lon});
-            relation["amenity"="hostel"](around:${radius},${lat},${lon});
-
-            node["name"~"hostel",i](around:${radius},${lat},${lon});
-            way["name"~"hostel",i](around:${radius},${lat},${lon});
-          );
-        `;
-      }
-
-      if (selectedType === "PG") {
-        categoryQuery = `
-          (
-            node["tourism"="guest_house"](around:${radius},${lat},${lon});
-            way["tourism"="guest_house"](around:${radius},${lat},${lon});
-
-            node["name"~"PG|Paying Guest|paying guest",i](around:${radius},${lat},${lon});
-            way["name"~"PG|Paying Guest|paying guest",i](around:${radius},${lat},${lon});
-          );
-        `;
-      }
-
-      if (selectedType === "Flat") {
-        categoryQuery = `
-          (
-            node["building"="apartments"](around:${radius},${lat},${lon});
-            way["building"="apartments"](around:${radius},${lat},${lon});
-
-            node["residential"="apartments"](around:${radius},${lat},${lon});
-            way["residential"="apartments"](around:${radius},${lat},${lon});
-          );
-        `;
-      }
-
-      if (selectedType === "Co-Living") {
-        categoryQuery = `
-          (
-            node["name"~"co.?living|coliving",i](around:${radius},${lat},${lon});
-            way["name"~"co.?living|coliving",i](around:${radius},${lat},${lon});
-          );
-        `;
-      }
-
       const query = `
-        [out:json][timeout:40];
-        ${categoryQuery}
-        out center tags;
-      `;
+[out:json][timeout:35];
+
+(
+  node["tourism"~"hostel|guest_house|hotel"]
+    (around:${radius},${latitude},${longitude});
+
+  way["tourism"~"hostel|guest_house|hotel"]
+    (around:${radius},${latitude},${longitude});
+
+  relation["tourism"~"hostel|guest_house|hotel"]
+    (around:${radius},${latitude},${longitude});
+
+  node["amenity"="hostel"]
+    (around:${radius},${latitude},${longitude});
+
+  way["amenity"="hostel"]
+    (around:${radius},${latitude},${longitude});
+
+  relation["amenity"="hostel"]
+    (around:${radius},${latitude},${longitude});
+);
+
+out center tags;
+`;
 
       const data = await runOverpass(query);
 
@@ -423,114 +445,105 @@ function App() {
         .map((item) => {
           const tags = item.tags || {};
 
-          const latitude =
+          const lat =
             item.lat ??
             item.center?.lat ??
             null;
 
-          const longitude =
+          const lon =
             item.lon ??
             item.center?.lon ??
             null;
 
-          if (
-            latitude === null ||
-            longitude === null
-          ) {
-            return null;
-          }
-
           const name =
             tags.name ||
             tags["name:en"] ||
-            "Mapped Accommodation";
+            "Accommodation";
 
-          let type = "Accommodation";
+          let type = "Guest House";
 
           if (
             tags.tourism === "hostel" ||
             tags.amenity === "hostel"
           ) {
             type = "Hostel";
-          } else if (
-            tags.tourism === "guest_house"
-          ) {
-            type = "PG";
-          } else if (
-            tags.tourism === "hotel"
-          ) {
+          } else if (tags.tourism === "hotel") {
             type = "Hotel";
-          } else if (
-            tags.building === "apartments"
-          ) {
-            type = "Flat";
-          } else if (
-            /co.?living|coliving/i.test(
-              name
-            )
-          ) {
-            type = "Co-Living";
           }
 
-          const address = [
-            tags["addr:housenumber"],
-            tags["addr:street"],
-            tags["addr:suburb"],
-            tags["addr:city"],
-          ]
-            .filter(Boolean)
-            .join(", ");
-
           return {
-            id: `osm-${item.type}-${item.id}`,
+            id: `real-${item.type}-${item.id}`,
             name,
             property_type: type,
             pg_type: "Unisex",
+
             location:
-              address ||
-              locationName ||
-              location ||
-              "Mapped location",
+              [
+                tags["addr:street"],
+                tags["addr:suburb"],
+                tags["addr:city"],
+              ]
+                .filter(Boolean)
+                .join(", ") || location,
+
             rent: null,
-            owner_name: "OpenStreetMap",
+
+            owner_name: "OpenStreetMap listing",
+
             owner_phone:
               tags.phone ||
               tags["contact:phone"] ||
               "",
+
             food_available: Boolean(
-              tags.restaurant ||
-                tags.cuisine
+              tags.restaurant || tags.cuisine
             ),
+
             food_type:
-              tags.cuisine ||
-              "Not specified",
+              tags.cuisine || "Not specified",
+
+            water_available: true,
+
             wifi_available:
               tags.internet_access === "wlan",
-            water_available: true,
+
             cctv_available: false,
-            latitude: Number(latitude),
-            longitude: Number(longitude),
+
+            latitude: lat,
+            longitude: lon,
+
             room_type: "Not specified",
             room_available: true,
+
             website:
               tags.website ||
               tags["contact:website"] ||
               "",
+
             image: getImageFromTags(tags),
+
             distanceKm:
-              coords
+              currentLocation &&
+              lat != null &&
+              lon != null
                 ? haversine(
-                    coords.latitude,
-                    coords.longitude,
-                    Number(latitude),
-                    Number(longitude)
+                    currentLocation.latitude,
+                    currentLocation.longitude,
+                    lat,
+                    lon
                   )
                 : null,
+
             isReal: true,
           };
         })
-        .filter(Boolean);
+        .filter(
+          (x) =>
+            x.latitude != null &&
+            x.longitude != null
+        );
 
+      // Remove duplicate names
       const unique = results.filter(
         (item, index, array) =>
           index ===
@@ -539,12 +552,7 @@ function App() {
               other.name.toLowerCase() ===
                 item.name.toLowerCase() &&
               Math.abs(
-                other.latitude -
-                  item.latitude
-              ) < 0.0001 &&
-              Math.abs(
-                other.longitude -
-                  item.longitude
+                other.latitude - item.latitude
               ) < 0.0001
           )
       );
@@ -556,74 +564,50 @@ function App() {
       );
 
       setRealPGs(unique);
+    } catch (e) {
+      console.error(e);
 
-      const newMapLocation = {
-        latitude: lat,
-        longitude: lon,
-      };
-
-      setMapLocation(newMapLocation);
-
-      if (!coords) {
-        setCurrentLocation(null);
-      }
-
-      if (!locationName && location) {
-        setLocationName(location);
-      }
-    } catch (err) {
-      console.error(err);
       setRealPGs([]);
 
       alert(
-        "Real map search temporarily unavailable. Thodi der baad Try Again karo."
+        "Map search failed. Internet connection check karo aur dobara try karo."
       );
     } finally {
       setRealLoading(false);
     }
   };
 
-  const handleSearch = () => {
-    searchRealPGs();
-  };
+  /* =========================================================
+     FILTER DATABASE RESULTS
+  ========================================================= */
 
   const filteredPGs = useMemo(() => {
-    const text = search
-      .trim()
-      .toLowerCase();
+    const s = search.trim().toLowerCase();
 
     return pgs.filter((pg) => {
       const matchesText =
-        !text ||
-        pg.name
-          ?.toLowerCase()
-          .includes(text) ||
-        pg.location
-          ?.toLowerCase()
-          .includes(text);
+        !s ||
+        pg.name?.toLowerCase().includes(s) ||
+        pg.location?.toLowerCase().includes(s);
 
       const matchesProperty =
         propertyType === "All" ||
-        pg.property_type
-          ?.toLowerCase() ===
+        pg.property_type?.toLowerCase() ===
           propertyType.toLowerCase();
 
       const matchesPGType =
         pgType === "All" ||
-        pg.pg_type
-          ?.toLowerCase() ===
+        pg.pg_type?.toLowerCase() ===
           pgType.toLowerCase();
 
       const matchesFood =
         foodType === "All" ||
-        pg.food_type
-          ?.toLowerCase() ===
+        pg.food_type?.toLowerCase() ===
           foodType.toLowerCase();
 
       const matchesRent =
         !maxRent ||
-        Number(pg.rent) <=
-          Number(maxRent);
+        Number(pg.rent) <= Number(maxRent);
 
       return (
         matchesText &&
@@ -649,28 +633,29 @@ function App() {
 
     return pgs.filter(
       (pg) =>
-        pg.property_type
-          ?.toLowerCase() ===
+        pg.property_type?.toLowerCase() ===
         type.toLowerCase()
     ).length;
   };
 
   const clearFilters = () => {
     setSearch("");
-    setPropertyType("All");
+    setPropertyType("PG");
     setPgType("All");
     setFoodType("All");
     setMaxRent("");
     setRealPGs([]);
     setCurrentLocation(null);
-    setMapLocation(null);
     setLocationName("");
+
+    fetchPGs("");
   };
 
-  const updateForm = (
-    field,
-    value
-  ) => {
+  /* =========================================================
+     ADD / EDIT PROPERTY
+  ========================================================= */
+
+  const updateForm = (field, value) => {
     setForm((previous) => ({
       ...previous,
       [field]: value,
@@ -682,8 +667,7 @@ function App() {
 
     setForm({
       ...emptyForm,
-      owner_name:
-        user?.name || "",
+      owner_name: user?.name || "",
     });
 
     setShowForm(true);
@@ -717,26 +701,18 @@ function App() {
       ({ coords }) => {
         updateForm(
           "latitude",
-          Number(
-            coords.latitude.toFixed(6)
-          )
+          Number(coords.latitude.toFixed(6))
         );
 
         updateForm(
           "longitude",
-          Number(
-            coords.longitude.toFixed(6)
-          )
+          Number(coords.longitude.toFixed(6))
         );
 
-        alert(
-          "Current GPS coordinates added!"
-        );
+        alert("Current GPS coordinates added!");
       },
       () => {
-        alert(
-          "GPS permission allow karo."
-        );
+        alert("GPS permission allow karo.");
       },
       {
         enableHighAccuracy: true,
@@ -749,17 +725,17 @@ function App() {
     e.preventDefault();
 
     if (!form.name.trim()) {
-      alert("Property name required");
+      alert("Please enter property name");
       return;
     }
 
     if (!form.location.trim()) {
-      alert("Location required");
+      alert("Please enter location");
       return;
     }
 
     if (!form.rent) {
-      alert("Rent required");
+      alert("Please enter rent");
       return;
     }
 
@@ -771,8 +747,7 @@ function App() {
 
         name: form.name.trim(),
 
-        location:
-          form.location.trim(),
+        location: form.location.trim(),
 
         owner_name:
           form.owner_name.trim() ||
@@ -781,22 +756,18 @@ function App() {
 
         rent: Number(form.rent),
 
-        food_rating: Number(
-          form.food_rating || 0
-        ),
+        food_rating:
+          Number(form.food_rating || 0),
 
-        cleaning_rating: Number(
-          form.cleaning_rating || 0
-        ),
+        cleaning_rating:
+          Number(form.cleaning_rating || 0),
 
-        hygiene_rating: Number(
-          form.hygiene_rating || 0
-        ),
+        hygiene_rating:
+          Number(form.hygiene_rating || 0),
 
         washroom_cleaning_rating:
           Number(
-            form.washroom_cleaning_rating ||
-              0
+            form.washroom_cleaning_rating || 0
           ),
       };
 
@@ -806,38 +777,30 @@ function App() {
       delete payload.website;
       delete payload.image;
 
-      const url = editingId
-        ? `${API_URL}/pg/${editingId}`
-        : `${API_URL}/pg`;
-
-      const response =
-        await fetch(url, {
-          method: editingId
-            ? "PUT"
-            : "POST",
+      const response = await fetch(
+        editingId
+          ? `${API_URL}/pg/${editingId}`
+          : `${API_URL}/pg`,
+        {
+          method: editingId ? "PUT" : "POST",
 
           headers: {
-            "Content-Type":
-              "application/json",
+            "Content-Type": "application/json",
           },
 
-          body: JSON.stringify(
-            payload
-          ),
-        });
+          body: JSON.stringify(payload),
+        }
+      );
 
       if (!response.ok) {
-        const data =
-          await response
-            .json()
-            .catch(() => null);
+        const data = await response
+          .json()
+          .catch(() => null);
 
         throw new Error(
           data?.detail
-            ? JSON.stringify(
-                data.detail
-              )
-            : `Server error ${response.status}`
+            ? JSON.stringify(data.detail)
+            : `Server error: ${response.status}`
         );
       }
 
@@ -850,10 +813,8 @@ function App() {
           ? "Property updated successfully!"
           : "Property added successfully!"
       );
-    } catch (err) {
-      alert(
-        `Error: ${err.message}`
-      );
+    } catch (e) {
+      alert(`Error: ${e.message}`);
     } finally {
       setSaving(false);
     }
@@ -869,31 +830,28 @@ function App() {
     }
 
     try {
-      const response =
-        await fetch(
-          `${API_URL}/pg/${id}`,
-          {
-            method: "DELETE",
-          }
-        );
+      const response = await fetch(
+        `${API_URL}/pg/${id}`,
+        {
+          method: "DELETE",
+        }
+      );
 
       if (!response.ok) {
-        throw new Error(
-          "Delete failed"
-        );
+        throw new Error("Delete failed");
       }
 
       await fetchPGs();
 
-      alert(
-        "Property deleted successfully!"
-      );
-    } catch (err) {
-      alert(
-        `Error: ${err.message}`
-      );
+      alert("Property deleted successfully!");
+    } catch (e) {
+      alert(`Error: ${e.message}`);
     }
   };
+
+  /* =========================================================
+     MAP / DIRECTIONS
+  ========================================================= */
 
   const openMap = (pg) => {
     if (
@@ -901,13 +859,13 @@ function App() {
       pg.longitude == null
     ) {
       alert(
-        "Location coordinates available nahi hain."
+        "Location coordinates are not available."
       );
       return;
     }
 
     window.open(
-      `https://www.openstreetmap.org/?mlat=${pg.latitude}&mlon=${pg.longitude}#map=18/${pg.latitude}/${pg.longitude}`,
+      `https://www.google.com/maps?q=${pg.latitude},${pg.longitude}`,
       "_blank"
     );
   };
@@ -918,7 +876,7 @@ function App() {
       pg.longitude == null
     ) {
       alert(
-        "Location coordinates available nahi hain."
+        "Location coordinates are not available."
       );
       return;
     }
@@ -932,38 +890,33 @@ function App() {
   const openWebsite = (pg) => {
     if (!pg.website) {
       alert(
-        "Website available nahi hai."
+        "Website is not available for this listing."
       );
       return;
     }
 
-    const url =
-      pg.website.startsWith("http")
-        ? pg.website
-        : `https://${pg.website}`;
+    const url = pg.website.startsWith("http")
+      ? pg.website
+      : `https://${pg.website}`;
 
     window.open(url, "_blank");
   };
 
   const getPropertyIcon = (type) => {
     if (type === "PG") {
-      return <Home size={20} />;
+      return <Home size={18} />;
     }
 
     if (type === "Co-Living") {
-      return <Building2 size={20} />;
+      return <Building2 size={18} />;
     }
 
-    if (type === "Hostel") {
-      return <BedDouble size={20} />;
-    }
-
-    if (type === "Flat") {
-      return <Building2 size={20} />;
-    }
-
-    return <Home size={20} />;
+    return <BedDouble size={18} />;
   };
+
+  /* =========================================================
+     LOGIN
+  ========================================================= */
 
   if (!user) {
     return (
@@ -978,13 +931,9 @@ function App() {
 
             <h1>Smart PG</h1>
 
-            <p>
-              Find your perfect stay
-            </p>
+            <p>Find your perfect stay</p>
 
-            <form
-              onSubmit={handleLogin}
-            >
+            <form onSubmit={handleLogin}>
               <label className="login-label">
                 Your Name
               </label>
@@ -993,9 +942,7 @@ function App() {
                 className="login-input"
                 value={loginName}
                 onChange={(e) =>
-                  setLoginName(
-                    e.target.value
-                  )
+                  setLoginName(e.target.value)
                 }
                 placeholder="Enter your name"
               />
@@ -1006,8 +953,7 @@ function App() {
             </form>
 
             <div className="login-footer">
-              Smart PG Accommodation
-              Finder
+              Smart PG Accommodation Finder
             </div>
           </div>
         </div>
@@ -1016,17 +962,24 @@ function App() {
   }
 
   const categories = [
-    ["All", "All Properties"],
+    ["All", "All properties"],
     ["PG", "Paying Guest"],
+    ["Co-Living", "Shared living"],
     ["Hostel", "Hostels"],
-    ["Co-Living", "Shared Living"],
     ["Flat", "Flats"],
   ];
+
+  const noPGFound =
+    !loading &&
+    !error &&
+    search.trim() &&
+    filteredPGs.length === 0;
 
   return (
     <div className="app">
       <style>{styles}</style>
 
+      {/* NAVBAR */}
       <nav className="navbar">
         <div>
           <div className="brand">
@@ -1034,8 +987,7 @@ function App() {
           </div>
 
           <div className="brand-sub">
-            Real location • GPS •
-            Nearby stays
+            PG first • Map when needed • GPS
           </div>
         </div>
 
@@ -1063,41 +1015,34 @@ function App() {
         </div>
       </nav>
 
+      {/* HERO */}
       <section className="hero">
         <div className="hero-inner">
-          <div className="hero-label">
-            📍 SMART GPS ACCOMMODATION
-            FINDER
+          <div>
+            📍 Smart PG Accommodation Finder
           </div>
 
           <h1>
             Find Your Perfect{" "}
             <span>
-              PG, Hostel, Co-Living
-              & Flat
+              PG, Hostel & Home
             </span>
           </h1>
 
           <p>
-            Search any city, area,
-            landmark or PIN code and
-            discover mapped
-            accommodation around
-            that location.
+            Pehle Smart PG ke available properties
+            search hongi. Agar PG nahi milega tabhi
+            nearby map search ka option milega.
           </p>
 
           <div className="search-box">
             <input
               value={search}
               onChange={(e) =>
-                setSearch(
-                  e.target.value
-                )
+                setSearch(e.target.value)
               }
               onKeyDown={(e) => {
-                if (
-                  e.key === "Enter"
-                ) {
+                if (e.key === "Enter") {
                   handleSearch();
                 }
               }}
@@ -1106,69 +1051,63 @@ function App() {
 
             <button
               className="gps-btn"
-              onClick={
-                getCurrentLocation
-              }
-              disabled={
-                locationLoading
-              }
+              onClick={getCurrentLocation}
+              disabled={locationLoading}
             >
               <LocateFixed size={18} />
 
               {locationLoading
                 ? "Getting GPS..."
-                : "Use My Location"}
+                : "Current Location"}
             </button>
 
             <button
               className="search-btn"
               onClick={handleSearch}
-              disabled={realLoading}
+              disabled={loading}
             >
               <Search size={18} />
 
-              {realLoading
+              {loading
                 ? "Searching..."
-                : "Search"}
+                : "Search PG"}
             </button>
           </div>
 
           {locationName && (
             <div className="current-location">
-              <MapPin size={17} />
+              <LocateFixed size={16} />
 
               <div>
                 <strong>
-                  Location:
+                  Search location:
                 </strong>{" "}
                 {locationName}
               </div>
             </div>
           )}
 
-          <div className="real-search-note">
-            🟢 Real mapped data from
-            OpenStreetMap. Search
-            results depend on places
-            actually mapped in
-            OpenStreetMap.
+          <div className="search-note">
+            🏠 First Smart PG database is searched.
+            🗺️ Map search is only available if no
+            Smart PG is found.
           </div>
         </div>
       </section>
 
+      {/* CATEGORIES */}
       <section className="section">
         <h2 className="section-title">
-          1️⃣ Choose Accommodation
+          Choose Accommodation
         </h2>
 
         <p className="section-subtitle">
-          Select PG, Hostel, Co-Living
-          or Flat before searching.
+          Select PG, Co-Living, Hostel or Flat
         </p>
 
         <div className="categories">
           {categories.map(
-            ([type, description]) => (
+            ([type, desc]) => (
               <button
                 key={type}
                 className={`category ${
@@ -1176,30 +1115,17 @@ function App() {
                     ? "active"
                     : ""
                 }`}
-                onClick={() => {
-                  setPropertyType(
-                    type
-                  );
-
-                  if (search) {
-                    setTimeout(
-                      () =>
-                        searchRealPGs(),
-                      0
-                    );
-                  }
-                }}
+                onClick={() =>
+                  setPropertyType(type)
+                }
               >
                 <div className="category-name">
-                  {getPropertyIcon(
-                    type
-                  )}
-
+                  {getPropertyIcon(type)}
                   {type}
                 </div>
 
                 <div className="category-desc">
-                  {description}
+                  {desc}
                 </div>
 
                 <div className="category-count">
@@ -1211,45 +1137,250 @@ function App() {
         </div>
       </section>
 
-      {mapLocation && (
-        <LiveMap
-          location={mapLocation}
-          results={realPGs}
-        />
-      )}
+      {/* FILTERS */}
+      <section className="section">
+        <h2 className="section-title">
+          Filter Your Stay
+        </h2>
+
+        <p className="section-subtitle">
+          Choose what you need
+        </p>
+
+        <div className="filters">
+          <div className="field">
+            <label>Suitable For</label>
+
+            <select
+              value={pgType}
+              onChange={(e) =>
+                setPgType(e.target.value)
+              }
+            >
+              <option>All</option>
+              <option>Boys</option>
+              <option>Girls</option>
+              <option>Unisex</option>
+            </select>
+          </div>
+
+          <div className="field">
+            <label>Food</label>
+
+            <select
+              value={foodType}
+              onChange={(e) =>
+                setFoodType(e.target.value)
+              }
+            >
+              <option>All</option>
+              <option>Veg</option>
+              <option>Non-Veg</option>
+            </select>
+          </div>
+
+          <div className="field">
+            <label>Maximum Rent</label>
+
+            <input
+              type="number"
+              placeholder="₹ Maximum rent"
+              value={maxRent}
+              onChange={(e) =>
+                setMaxRent(e.target.value)
+              }
+            />
+          </div>
+
+          <button
+            className="reset-btn"
+            onClick={clearFilters}
+          >
+            <RefreshCw size={16} />
+            Reset
+          </button>
+        </div>
+      </section>
+
+      {/* =====================================================
+          DATABASE RESULTS
+      ===================================================== */}
+
+      <section className="section">
+        <div className="result-header">
+          <div>
+            <h2>
+              🏠 Smart PG Properties
+            </h2>
+
+            <div className="section-subtitle">
+              {search.trim()
+                ? `Results for "${search}"`
+                : "Properties available in Smart PG"}
+            </div>
+          </div>
+
+          <button
+            className="refresh-btn"
+            onClick={() =>
+              fetchPGs(search)
+            }
+          >
+            <RefreshCw size={16} />
+            Refresh
+          </button>
+        </div>
+
+        {loading && (
+          <div className="empty">
+            <h3>
+              🔎 Searching Smart PG...
+            </h3>
+
+            <p>
+              Pehle Smart PG database check
+              kiya ja raha hai.
+            </p>
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="error">
+            <h3>
+              ⚠️ Unable to load properties
+            </h3>
+
+            <p>{error}</p>
+
+            <button
+              className="refresh-btn"
+              onClick={() =>
+                fetchPGs(search)
+              }
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+
+        {/* PG FOUND */}
+        {!loading &&
+          !error &&
+          filteredPGs.length > 0 && (
+            <div className="cards">
+              {filteredPGs.map((pg) => (
+                <DBCard
+                  key={pg.id}
+                  pg={pg}
+                  openMap={openMap}
+                  openDirections={
+                    openDirections
+                  }
+                  openEditForm={
+                    openEditForm
+                  }
+                  deleteProperty={
+                    deleteProperty
+                  }
+                />
+              ))}
+            </div>
+          )}
+
+        {/* NO PG -> MAP OPTION */}
+        {noPGFound && (
+          <div className="no-pg-box">
+            <div className="no-pg-icon">
+              🏠
+            </div>
+
+            <h3>
+              No Smart PG found here
+            </h3>
+
+            <p>
+              Smart PG database mein{" "}
+              <strong>
+                {search}
+              </strong>{" "}
+              ke liye abhi property available
+              nahi hai.
+            </p>
+
+            <p className="map-help">
+              Agar aap chaho to nearby
+              OpenStreetMap accommodations
+              search kar sakte ho.
+            </p>
+
+            {/* MAP IS ONLY A BUTTON */}
+            <button
+              className="map-fallback-btn"
+              onClick={
+                searchRealPGs
+              }
+              disabled={realLoading}
+            >
+              <Map size={18} />
+
+              {realLoading
+                ? "Searching Map..."
+                : "🗺️ Search Nearby on Map"}
+            </button>
+          </div>
+        )}
+
+        {/* INITIAL EMPTY */}
+        {!loading &&
+          !error &&
+          !search.trim() &&
+          filteredPGs.length === 0 && (
+            <div className="empty">
+              <h3>
+                🏠 No properties available
+              </h3>
+
+              <p>
+                Location search karke Smart PG
+                properties find karo.
+              </p>
+            </div>
+          )}
+      </section>
+
+      {/* =====================================================
+          MAP RESULTS
+          ONLY SHOWN AFTER USER CLICKS MAP BUTTON
+      ===================================================== */}
 
       {realPGs.length > 0 && (
         <section className="section">
           <div className="result-header">
             <div>
               <h2>
-                📍 Real Mapped
-                Accommodations
+                🗺️ Nearby Map Accommodations
               </h2>
 
               <div className="section-subtitle">
-                Found{" "}
-                <strong>
-                  {realPGs.length}
-                </strong>{" "}
-                mapped places
-                {currentLocation
-                  ? " near your GPS location"
-                  : ""}
+                These are external OpenStreetMap
+                listings, not Smart PG database
+                properties.
               </div>
             </div>
 
             <button
               className="refresh-btn"
-              onClick={() =>
-                searchRealPGs(
-                  currentLocation
-                )
-              }
+              onClick={searchRealPGs}
             >
               <RefreshCw size={16} />
               Search Again
             </button>
+          </div>
+
+          <div className="map-warning">
+            ℹ️ Smart PG mein property nahi mili,
+            isliye aapne manually nearby map
+            search open kiya.
           </div>
 
           <div className="cards">
@@ -1270,196 +1401,15 @@ function App() {
         </section>
       )}
 
-      <section className="section">
-        <div className="result-header">
-          <div>
-            <h2>
-              🏠 Smart PG Properties
-            </h2>
-
-            <div className="section-subtitle">
-              Showing{" "}
-              <strong>
-                {filteredPGs.length}
-              </strong>{" "}
-              properties added by
-              Smart PG users.
-            </div>
-          </div>
-
-          <button
-            className="refresh-btn"
-            onClick={fetchPGs}
-          >
-            <RefreshCw size={16} />
-            Refresh
-          </button>
-        </div>
-
-        {loading && (
-          <div className="empty">
-            Loading properties...
-          </div>
-        )}
-
-        {!loading && error && (
-          <div className="error">
-            <h3>
-              ⚠️ Unable to load
-              properties
-            </h3>
-
-            <p>{error}</p>
-
-            <button
-              className="refresh-btn"
-              onClick={fetchPGs}
-            >
-              Try Again
-            </button>
-          </div>
-        )}
-
-        {!loading &&
-          !error &&
-          filteredPGs.length === 0 && (
-            <div className="empty">
-              <h3>
-                No Smart PG properties
-                added yet
-              </h3>
-
-              <p>
-                Real OpenStreetMap
-                search upar available
-                hai.
-              </p>
-
-              <button
-                className="add-btn"
-                onClick={
-                  openAddForm
-                }
-              >
-                <Plus size={17} />
-                Add First Property
-              </button>
-            </div>
-          )}
-
-        {!loading &&
-          !error &&
-          filteredPGs.length > 0 && (
-            <div className="cards">
-              {filteredPGs.map(
-                (pg) => (
-                  <DBCard
-                    key={pg.id}
-                    pg={pg}
-                    openMap={openMap}
-                    openDirections={
-                      openDirections
-                    }
-                    openEditForm={
-                      openEditForm
-                    }
-                    deleteProperty={
-                      deleteProperty
-                    }
-                  />
-                )
-              )}
-            </div>
-          )}
-      </section>
-
-      <section className="section">
-        <h2 className="section-title">
-          🔎 Stay Filters
-        </h2>
-
-        <p className="section-subtitle">
-          Boys/Girls/Unisex, food and
-          maximum rent.
-        </p>
-
-        <div className="filters">
-          <div className="field">
-            <label>
-              Suitable For
-            </label>
-
-            <select
-              value={pgType}
-              onChange={(e) =>
-                setPgType(
-                  e.target.value
-                )
-              }
-            >
-              <option>All</option>
-              <option>Boys</option>
-              <option>Girls</option>
-              <option>Unisex</option>
-            </select>
-          </div>
-
-          <div className="field">
-            <label>Food</label>
-
-            <select
-              value={foodType}
-              onChange={(e) =>
-                setFoodType(
-                  e.target.value
-                )
-              }
-            >
-              <option>All</option>
-              <option>Veg</option>
-              <option>Non-Veg</option>
-            </select>
-          </div>
-
-          <div className="field">
-            <label>
-              Maximum Rent
-            </label>
-
-            <input
-              type="number"
-              value={maxRent}
-              onChange={(e) =>
-                setMaxRent(
-                  e.target.value
-                )
-              }
-              placeholder="₹ Maximum rent"
-            />
-          </div>
-
-          <button
-            className="reset-btn"
-            onClick={
-              clearFilters
-            }
-          >
-            <RefreshCw size={16} />
-            Reset
-          </button>
-        </div>
-      </section>
-
+      {/* FOOTER */}
       <footer>
         <strong>
           🏠 Smart PG
         </strong>
 
         <p>
-          Find PG, Hostel,
-          Co-Living & Flat with
-          GPS and real mapped
-          location search.
+          Find PG, Co-Living, Hostel & Flat
+          with GPS and optional real map search.
         </p>
 
         <div>
@@ -1467,6 +1417,7 @@ function App() {
         </div>
       </footer>
 
+      {/* ADD / EDIT MODAL */}
       {showForm && (
         <div className="modal-bg">
           <div className="modal">
@@ -1485,217 +1436,226 @@ function App() {
               </button>
             </div>
 
-            <form
-              onSubmit={
-                saveProperty
-              }
-            >
+            <form onSubmit={saveProperty}>
               <div className="form-grid">
-                <FormInput
-                  label="Property Name *"
-                  value={form.name}
-                  onChange={(v) =>
-                    updateForm(
-                      "name",
-                      v
-                    )
-                  }
-                  placeholder="e.g. Shivani PG"
-                />
+                {[
+                  [
+                    "name",
+                    "Property Name *",
+                    "text",
+                    "e.g. Shivani PG",
+                  ],
 
-                <FormSelect
-                  label="Property Type"
-                  value={
-                    form.property_type
-                  }
-                  options={[
-                    "PG",
-                    "Hostel",
-                    "Co-Living",
-                    "Flat",
-                  ]}
-                  onChange={(v) =>
-                    updateForm(
-                      "property_type",
-                      v
-                    )
-                  }
-                />
+                  [
+                    "property_type",
+                    "Property Type",
+                    "select",
+                    [
+                      "PG",
+                      "Co-Living",
+                      "Hostel",
+                      "Flat",
+                    ],
+                  ],
 
-                <FormSelect
-                  label="Suitable For"
-                  value={
-                    form.pg_type
-                  }
-                  options={[
-                    "Boys",
-                    "Girls",
-                    "Unisex",
-                  ]}
-                  onChange={(v) =>
-                    updateForm(
-                      "pg_type",
-                      v
-                    )
-                  }
-                />
+                  [
+                    "pg_type",
+                    "Suitable For",
+                    "select",
+                    [
+                      "Boys",
+                      "Girls",
+                      "Unisex",
+                    ],
+                  ],
 
-                <FormInput
-                  label="Location *"
-                  value={
-                    form.location
-                  }
-                  onChange={(v) =>
-                    updateForm(
-                      "location",
-                      v
-                    )
-                  }
-                  placeholder="Bangalore"
-                />
+                  [
+                    "location",
+                    "Location *",
+                    "text",
+                    "Bangalore",
+                  ],
 
-                <FormInput
-                  label="Monthly Rent *"
-                  type="number"
-                  value={form.rent}
-                  onChange={(v) =>
-                    updateForm(
-                      "rent",
-                      v
-                    )
-                  }
-                  placeholder="8000"
-                />
+                  [
+                    "rent",
+                    "Monthly Rent *",
+                    "number",
+                    "8000",
+                  ],
 
-                <FormSelect
-                  label="Room Type"
-                  value={
-                    form.room_type
-                  }
-                  options={[
-                    "Single",
-                    "Double",
-                    "Triple",
-                    "Shared",
-                  ]}
-                  onChange={(v) =>
-                    updateForm(
-                      "room_type",
-                      v
-                    )
-                  }
-                />
+                  [
+                    "room_type",
+                    "Room Type",
+                    "select",
+                    [
+                      "Single",
+                      "Double",
+                      "Triple",
+                      "Shared",
+                    ],
+                  ],
 
-                <FormInput
-                  label="Owner Name"
-                  value={
-                    form.owner_name
-                  }
-                  onChange={(v) =>
-                    updateForm(
-                      "owner_name",
-                      v
-                    )
-                  }
-                  placeholder="Owner name"
-                />
+                  [
+                    "owner_name",
+                    "Owner Name",
+                    "text",
+                    "Owner name",
+                  ],
 
-                <FormInput
-                  label="Owner Phone"
-                  value={
-                    form.owner_phone
-                  }
-                  onChange={(v) =>
-                    updateForm(
-                      "owner_phone",
-                      v
-                    )
-                  }
-                  placeholder="Phone number"
-                />
+                  [
+                    "owner_phone",
+                    "Owner Phone",
+                    "text",
+                    "Phone number",
+                  ],
 
-                <FormSelect
-                  label="Food Type"
-                  value={
-                    form.food_type
-                  }
-                  options={[
-                    "Veg",
-                    "Non-Veg",
-                  ]}
-                  onChange={(v) =>
-                    updateForm(
-                      "food_type",
-                      v
-                    )
-                  }
-                />
+                  [
+                    "food_type",
+                    "Food Type",
+                    "select",
+                    [
+                      "Veg",
+                      "Non-Veg",
+                    ],
+                  ],
 
-                <FormInput
-                  label="Food Rating"
-                  type="number"
-                  value={
-                    form.food_rating
-                  }
-                  onChange={(v) =>
-                    updateForm(
-                      "food_rating",
-                      v
-                    )
-                  }
-                  placeholder="0-5"
-                />
+                  [
+                    "food_rating",
+                    "Food Rating",
+                    "number",
+                    "0-5",
+                  ],
 
-                <FormInput
-                  label="Cleaning Rating"
-                  type="number"
-                  value={
-                    form.cleaning_rating
-                  }
-                  onChange={(v) =>
-                    updateForm(
-                      "cleaning_rating",
-                      v
-                    )
-                  }
-                  placeholder="0-5"
-                />
+                  [
+                    "cleaning_rating",
+                    "Cleaning Rating",
+                    "number",
+                    "0-5",
+                  ],
+                ].map(
+                  ([field, label, type, placeholder]) => (
+                    <div
+                      className="form-group"
+                      key={field}
+                    >
+                      <label>
+                        {label}
+                      </label>
 
-                <FormInput
-                  label="Latitude"
-                  type="number"
-                  value={
-                    form.latitude ??
-                    ""
-                  }
-                  onChange={(v) =>
-                    updateForm(
-                      "latitude",
-                      v
-                        ? Number(v)
-                        : null
-                    )
-                  }
-                  placeholder="12.9716"
-                />
+                      {type ===
+                      "select" ? (
+                        <select
+                          value={
+                            form[field]
+                          }
+                          onChange={(e) =>
+                            updateForm(
+                              field,
+                              e.target.value
+                            )
+                          }
+                        >
+                          {placeholder.map(
+                            (option) => (
+                              <option
+                                key={option}
+                              >
+                                {option}
+                              </option>
+                            )
+                          )}
+                        </select>
+                      ) : (
+                        <input
+                          type={type}
+                          min={
+                            type ===
+                            "number"
+                              ? 0
+                              : undefined
+                          }
+                          max={
+                            field.includes(
+                              "rating"
+                            )
+                              ? 5
+                              : undefined
+                          }
+                          step={
+                            field.includes(
+                              "rating"
+                            )
+                              ? 0.1
+                              : undefined
+                          }
+                          value={
+                            form[field] ??
+                            ""
+                          }
+                          onChange={(e) =>
+                            updateForm(
+                              field,
+                              e.target.value
+                            )
+                          }
+                          placeholder={
+                            placeholder
+                          }
+                        />
+                      )}
+                    </div>
+                  )
+                )}
 
-                <FormInput
-                  label="Longitude"
-                  type="number"
-                  value={
-                    form.longitude ??
-                    ""
-                  }
-                  onChange={(v) =>
-                    updateForm(
-                      "longitude",
-                      v
-                        ? Number(v)
-                        : null
-                    )
-                  }
-                  placeholder="77.5946"
-                />
+                <div className="form-group">
+                  <label>
+                    Latitude
+                  </label>
+
+                  <input
+                    type="number"
+                    step="any"
+                    value={
+                      form.latitude ?? ""
+                    }
+                    onChange={(e) =>
+                      updateForm(
+                        "latitude",
+                        e.target.value
+                          ? Number(
+                              e.target.value
+                            )
+                          : null
+                      )
+                    }
+                    placeholder="12.9716"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>
+                    Longitude
+                  </label>
+
+                  <input
+                    type="number"
+                    step="any"
+                    value={
+                      form.longitude ?? ""
+                    }
+                    onChange={(e) =>
+                      updateForm(
+                        "longitude",
+                        e.target.value
+                          ? Number(
+                              e.target.value
+                            )
+                          : null
+                      )
+                    }
+                    placeholder="77.5946"
+                  />
+                </div>
               </div>
 
               <button
@@ -1705,10 +1665,9 @@ function App() {
                   useGPSInForm
                 }
               >
-                <LocateFixed
-                  size={16}
-                />
+                <LocateFixed size={16} />
                 Use Current GPS
+                Coordinates
               </button>
 
               <div className="checkboxes">
@@ -1779,8 +1738,7 @@ function App() {
                         onChange={(e) =>
                           updateForm(
                             field,
-                            e.target
-                              .checked
+                            e.target.checked
                           )
                         }
                       />
@@ -1795,9 +1753,7 @@ function App() {
                 <button
                   type="button"
                   className="cancel"
-                  onClick={
-                    closeForm
-                  }
+                  onClick={closeForm}
                 >
                   Cancel
                 </button>
@@ -1824,137 +1780,47 @@ function App() {
   );
 }
 
-function FormInput({
-  label,
-  type = "text",
-  value,
-  onChange,
-  placeholder,
-}) {
-  return (
-    <div className="form-group">
-      <label>{label}</label>
+/* =========================================================
+   HAVERSINE
+========================================================= */
 
-      <input
-        type={type}
-        value={value ?? ""}
-        onChange={(e) =>
-          onChange(
-            e.target.value
-          )
-        }
-        placeholder={placeholder}
-      />
-    </div>
+function haversine(
+  lat1,
+  lon1,
+  lat2,
+  lon2
+) {
+  const R = 6371;
+
+  const dLat =
+    ((lat2 - lat1) * Math.PI) / 180;
+
+  const dLon =
+    ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(
+      (lat1 * Math.PI) / 180
+    ) *
+      Math.cos(
+        (lat2 * Math.PI) / 180
+      ) *
+      Math.sin(dLon / 2) ** 2;
+
+  return (
+    R *
+    2 *
+    Math.atan2(
+      Math.sqrt(a),
+      Math.sqrt(1 - a)
+    )
   );
 }
 
-function FormSelect({
-  label,
-  value,
-  options,
-  onChange,
-}) {
-  return (
-    <div className="form-group">
-      <label>{label}</label>
-
-      <select
-        value={value}
-        onChange={(e) =>
-          onChange(
-            e.target.value
-          )
-        }
-      >
-        {options.map(
-          (option) => (
-            <option
-              key={option}
-              value={option}
-            >
-              {option}
-            </option>
-          )
-        )}
-      </select>
-    </div>
-  );
-}
-
-function LiveMap({
-  location,
-  results,
-}) {
-  if (!location) {
-    return null;
-  }
-
-  const lat = Number(
-    location.latitude
-  );
-
-  const lon = Number(
-    location.longitude
-  );
-
-  const delta = 0.06;
-
-  const left = lon - delta;
-  const right = lon + delta;
-  const top = lat + delta;
-  const bottom = lat - delta;
-
-  const mapUrl =
-    `https://www.openstreetmap.org/export/embed.html?bbox=` +
-    `${left}%2C${bottom}%2C${right}%2C${top}` +
-    `&layer=mapnik&marker=${lat}%2C${lon}`;
-
-  return (
-    <section className="section">
-      <div className="map-header">
-        <div>
-          <h2>
-            🗺️ Live Map
-          </h2>
-
-          <p>
-            📍{" "}
-            {lat.toFixed(5)},{" "}
-            {lon.toFixed(5)}
-          </p>
-        </div>
-
-        <a
-          className="refresh-btn"
-          href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=14/${lat}/${lon}`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          <Map size={16} />
-          Open Full Map
-        </a>
-      </div>
-
-      <div className="live-map">
-        <iframe
-          title="Smart PG Live Map"
-          src={mapUrl}
-          loading="lazy"
-        />
-      </div>
-
-      <div className="map-info">
-        🟢 Map location found •{" "}
-        {results.length} mapped
-        accommodation result
-        {results.length === 1
-          ? ""
-          : "s"} nearby.
-      </div>
-    </section>
-  );
-}
+/* =========================================================
+   REAL MAP CARD
+========================================================= */
 
 function RealCard({
   pg,
@@ -1977,9 +1843,9 @@ function RealCard({
       ) : (
         <div className="image-placeholder">
           <ImageIcon size={30} />
+
           <span>
-            No photo supplied by
-            listing
+            No photo supplied by listing
           </span>
         </div>
       )}
@@ -1987,7 +1853,7 @@ function RealCard({
       <div className="card-top">
         <div className="badges">
           <span className="badge real">
-            REAL MAP DATA
+            MAP LISTING
           </span>
 
           <span className="badge">
@@ -2007,17 +1873,14 @@ function RealCard({
         {pg.distanceKm != null && (
           <div className="distance">
             <LocateFixed size={14} />
-            {pg.distanceKm.toFixed(
-              2
-            )}{" "}
-            km from GPS
+            {pg.distanceKm.toFixed(2)} km
+            from your GPS
           </div>
         )}
 
         <div className="rent">
           <span className="not-available">
-            Rent not available in
-            map data
+            Rent not available in map data
           </span>
         </div>
 
@@ -2079,9 +1942,7 @@ function RealCard({
               openDirections(pg)
             }
           >
-            <Navigation
-              size={15}
-            />
+            <Navigation size={15} />
             Directions
           </button>
 
@@ -2112,6 +1973,10 @@ function RealCard({
   );
 }
 
+/* =========================================================
+   DATABASE CARD
+========================================================= */
+
 function DBCard({
   pg,
   openMap,
@@ -2137,16 +2002,15 @@ function DBCard({
         <h3>{pg.name}</h3>
 
         <div className="location">
-          📍 {pg.location}
+          <MapPin size={15} />
+          {pg.location}
         </div>
 
         <div className="rent">
           ₹
           {Number(
             pg.rent || 0
-          ).toLocaleString(
-            "en-IN"
-          )}
+          ).toLocaleString("en-IN")}
 
           <small>
             {" "}
@@ -2177,8 +2041,7 @@ function DBCard({
 
           <span>
             🧹 Cleaning{" "}
-            {pg.cleaning_rating >
-            0
+            {pg.cleaning_rating > 0
               ? pg.cleaning_rating
               : "Not rated"}
           </span>
@@ -2247,14 +2110,10 @@ function DBCard({
                 <button
                   className="action-btn"
                   onClick={() =>
-                    openDirections(
-                      pg
-                    )
+                    openDirections(pg)
                   }
                 >
-                  <Navigation
-                    size={15}
-                  />
+                  <Navigation size={15} />
                   Directions
                 </button>
               </>
@@ -2273,9 +2132,7 @@ function DBCard({
           <button
             className="action-btn delete"
             onClick={() =>
-              deleteProperty(
-                pg.id
-              )
+              deleteProperty(pg.id)
             }
           >
             <Trash2 size={15} />
@@ -2287,840 +2144,824 @@ function DBCard({
   );
 }
 
-function haversine(
-  lat1,
-  lon1,
-  lat2,
-  lon2
-) {
-  const R = 6371;
-
-  const dLat =
-    ((lat2 - lat1) *
-      Math.PI) /
-    180;
-
-  const dLon =
-    ((lon2 - lon1) *
-      Math.PI) /
-    180;
-
-  const a =
-    Math.sin(dLat / 2) **
-      2 +
-    Math.cos(
-      (lat1 * Math.PI) / 180
-    ) *
-      Math.cos(
-        (lat2 * Math.PI) / 180
-      ) *
-      Math.sin(dLon / 2) **
-        2;
-
-  return (
-    R *
-    2 *
-    Math.atan2(
-      Math.sqrt(a),
-      Math.sqrt(1 - a)
-    )
-  );
-}
+/* =========================================================
+   STYLES
+========================================================= */
 
 const styles = `
-*{
-  box-sizing:border-box;
+* {
+  box-sizing: border-box;
 }
 
-body{
-  margin:0;
-  font-family:Arial,Helvetica,sans-serif;
-  background:#f5f7fb;
-  color:#172033;
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f5f7fb;
+  color: #172033;
 }
 
-button,input,select{
-  font:inherit;
+button,
+input,
+select {
+  font: inherit;
 }
 
-button{
-  cursor:pointer;
+button {
+  cursor: pointer;
 }
 
-.app{
-  min-height:100vh;
+.app {
+  min-height: 100vh;
 }
 
-.navbar{
-  background:#fff;
-  border-bottom:1px solid #e5e7eb;
-  padding:16px 6%;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:20px;
-  position:sticky;
-  top:0;
-  z-index:10;
+.navbar {
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 16px 6%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
-.brand{
-  font-size:24px;
-  font-weight:800;
+.brand {
+  font-size: 24px;
+  font-weight: 800;
 }
 
-.brand-sub{
-  color:#64748b;
-  font-size:13px;
-  margin-top:3px;
+.brand-sub {
+  color: #64748b;
+  font-size: 13px;
+  margin-top: 3px;
 }
 
-.navbar-right{
-  display:flex;
-  align-items:center;
-  gap:10px;
-  flex-wrap:wrap;
+.navbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.hello{
-  background:#eff6ff;
-  color:#1d4ed8;
-  padding:9px 13px;
-  border-radius:9px;
-  font-size:13px;
-  font-weight:700;
-  display:flex;
-  align-items:center;
-  gap:5px;
+.hello {
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 9px 13px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .add-btn,
-.search-btn{
-  border:none;
-  background:#2563eb;
-  color:#fff;
-  padding:11px 17px;
-  border-radius:9px;
-  display:flex;
-  align-items:center;
-  gap:7px;
-  font-weight:700;
+.search-btn {
+  border: none;
+  background: #2563eb;
+  color: #fff;
+  padding: 11px 17px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
 }
 
-.logout-btn{
-  border:1px solid #fecaca;
-  color:#dc2626;
-  background:#fff;
-  padding:10px 13px;
-  border-radius:9px;
-  display:flex;
-  align-items:center;
-  gap:6px;
-  font-weight:700;
+.logout-btn {
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  background: #fff;
+  padding: 10px 13px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
 }
 
-.hero{
-  padding:65px 6%;
-  background:linear-gradient(135deg,#eef4ff,#fff);
+.hero {
+  padding: 65px 6%;
+  background: linear-gradient(
+    135deg,
+    #eef4ff,
+    #fff
+  );
 }
 
-.hero-inner{
-  max-width:1100px;
-  margin:auto;
+.hero-inner {
+  max-width: 1100px;
+  margin: auto;
 }
 
-.hero-label{
-  color:#2563eb;
-  font-weight:800;
-  font-size:13px;
+.hero h1 {
+  font-size: 46px;
+  line-height: 1.1;
+  margin: 12px 0;
+  max-width: 700px;
 }
 
-.hero h1{
-  font-size:46px;
-  line-height:1.1;
-  margin:12px 0;
-  max-width:800px;
+.hero h1 span {
+  color: #2563eb;
 }
 
-.hero h1 span{
-  color:#2563eb;
+.hero p {
+  color: #64748b;
+  max-width: 700px;
+  font-size: 17px;
+  line-height: 1.6;
 }
 
-.hero p{
-  color:#64748b;
-  max-width:750px;
-  font-size:17px;
-  line-height:1.6;
+.search-box {
+  margin-top: 28px;
+  display: flex;
+  max-width: 1100px;
+  background: #fff;
+  padding: 7px;
+  border: 1px solid #dbe1ea;
+  border-radius: 13px;
+  box-shadow: 0 8px 25px rgba(0,0,0,.06);
 }
 
-.search-box{
-  margin-top:28px;
-  display:flex;
-  max-width:1100px;
-  background:#fff;
-  padding:7px;
-  border:1px solid #dbe1ea;
-  border-radius:13px;
-  box-shadow:0 8px 25px rgba(0,0,0,.06);
+.search-box input {
+  flex: 1;
+  border: none;
+  outline: none;
+  padding: 13px;
+  min-width: 0;
 }
 
-.search-box input{
-  flex:1;
-  border:none;
-  outline:none;
-  padding:13px;
-  min-width:0;
+.gps-btn {
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 9px;
+  padding: 0 15px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
 }
 
-.gps-btn{
-  border:1px solid #bfdbfe;
-  background:#eff6ff;
-  color:#1d4ed8;
-  border-radius:9px;
-  padding:0 15px;
-  display:flex;
-  align-items:center;
-  gap:7px;
-  font-weight:700;
+.search-btn {
+  padding: 0 24px;
 }
 
-.search-btn{
-  padding:0 24px;
+.current-location {
+  margin-top: 14px;
+  background: #ecfdf5;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  padding: 10px 13px;
+  border-radius: 9px;
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  font-size: 13px;
+  max-width: 900px;
 }
 
-.current-location{
-  margin-top:14px;
-  background:#ecfdf5;
-  border:1px solid #bbf7d0;
-  color:#166534;
-  padding:11px 13px;
-  border-radius:9px;
-  display:flex;
-  gap:7px;
-  align-items:flex-start;
-  font-size:13px;
+.search-note {
+  margin-top: 13px;
+  color: #64748b;
+  font-size: 13px;
 }
 
-.real-search-note{
-  margin-top:13px;
-  color:#64748b;
-  font-size:13px;
+.section {
+  width: 88%;
+  max-width: 1250px;
+  margin: 35px auto;
 }
 
-.section{
-  width:88%;
-  max-width:1250px;
-  margin:35px auto;
+.section-title {
+  font-size: 27px;
+  margin-bottom: 7px;
 }
 
-.section-title{
-  font-size:27px;
-  margin-bottom:7px;
+.section-subtitle {
+  color: #64748b;
+  margin-bottom: 20px;
 }
 
-.section-subtitle{
-  color:#64748b;
-  margin-bottom:20px;
+.categories {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
 }
 
-.categories{
-  display:grid;
-  grid-template-columns:repeat(5,1fr);
-  gap:14px;
+.category {
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  padding: 22px 15px;
+  border-radius: 14px;
+  text-align: left;
 }
 
-.category{
-  border:1px solid #e2e8f0;
-  background:#fff;
-  padding:22px 15px;
-  border-radius:14px;
-  text-align:left;
+.category.active {
+  border: 2px solid #2563eb;
+  background: #eff6ff;
 }
 
-.category.active{
-  border:2px solid #2563eb;
-  background:#eff6ff;
+.category-name {
+  font-size: 16px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
-.category-name{
-  font-size:16px;
-  font-weight:800;
-  display:flex;
-  align-items:center;
-  gap:6px;
+.category-desc {
+  font-size: 13px;
+  color: #64748b;
+  margin: 6px 0;
 }
 
-.category-desc{
-  font-size:13px;
-  color:#64748b;
-  margin:6px 0;
+.category-count {
+  font-size: 22px;
+  font-weight: 800;
 }
 
-.category-count{
-  font-size:22px;
-  font-weight:800;
-}
-
-.filters{
-  background:#fff;
-  border:1px solid #e2e8f0;
-  border-radius:15px;
-  padding:20px;
-  display:grid;
-  grid-template-columns:repeat(4,1fr) auto;
-  gap:15px;
-  align-items:end;
+.filters {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 15px;
+  padding: 20px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr) auto;
+  gap: 15px;
+  align-items: end;
 }
 
 .field label,
-.form-group label{
-  display:block;
-  font-size:13px;
-  font-weight:700;
-  margin-bottom:7px;
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 7px;
 }
 
 .field select,
 .field input,
 .form-group input,
-.form-group select{
-  width:100%;
-  padding:11px;
-  border:1px solid #dbe1ea;
-  border-radius:9px;
-  outline:none;
-  background:#fff;
+.form-group select {
+  width: 100%;
+  padding: 11px;
+  border: 1px solid #dbe1ea;
+  border-radius: 9px;
+  outline: none;
+  background: #fff;
 }
 
 .reset-btn,
-.refresh-btn{
-  border:1px solid #cbd5e1;
-  background:#fff;
-  padding:11px 16px;
-  border-radius:9px;
-  display:flex;
-  align-items:center;
-  gap:6px;
-  text-decoration:none;
-  color:#172033;
+.refresh-btn {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  padding: 11px 16px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.result-header{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  margin-bottom:18px;
-  gap:15px;
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+  gap: 15px;
 }
 
-.result-header h2{
-  margin:0;
+.result-header h2 {
+  margin: 0;
 }
 
-.cards{
-  display:grid;
-  grid-template-columns:repeat(3,1fr);
-  gap:20px;
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
 }
 
-.card{
-  background:#fff;
-  border:1px solid #e2e8f0;
-  border-radius:15px;
-  overflow:hidden;
-  box-shadow:0 5px 18px rgba(0,0,0,.04);
+.card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 15px;
+  overflow: hidden;
+  box-shadow: 0 5px 18px rgba(0,0,0,.04);
 }
 
-.real-card{
-  border:2px solid #22c55e;
+.real-card {
+  border: 2px solid #22c55e;
 }
 
-.listing-image{
-  width:100%;
-  height:180px;
-  object-fit:cover;
-  display:block;
+.listing-image {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  display: block;
 }
 
-.image-placeholder{
-  height:150px;
-  background:linear-gradient(135deg,#eef2ff,#f8fafc);
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  color:#64748b;
-  gap:8px;
-  font-size:12px;
+.image-placeholder {
+  height: 150px;
+  background: linear-gradient(
+    135deg,
+    #eef2ff,
+    #f8fafc
+  );
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  gap: 8px;
+  font-size: 12px;
 }
 
-.card-top{
-  padding:15px 17px;
-  background:#f8fafc;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
+.card-top {
+  padding: 15px 17px;
+  background: #f8fafc;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.badges{
-  display:flex;
-  gap:7px;
-  flex-wrap:wrap;
+.badges {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
 }
 
-.badge{
-  padding:5px 8px;
-  border-radius:6px;
-  font-size:11px;
-  font-weight:800;
-  background:#dbeafe;
-  color:#1d4ed8;
+.badge {
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 
-.badge.gender{
-  background:#f1f5f9;
-  color:#475569;
+.badge.gender {
+  background: #f1f5f9;
+  color: #475569;
 }
 
-.badge.real{
-  background:#dcfce7;
-  color:#166534;
+.badge.real {
+  background: #dcfce7;
+  color: #166534;
 }
 
-.card-body{
-  padding:19px;
+.card-body {
+  padding: 19px;
 }
 
-.card-body h3{
-  margin:0 0 7px;
-  font-size:21px;
+.card-body h3 {
+  margin: 0 0 7px;
+  font-size: 21px;
 }
 
-.location{
-  color:#64748b;
-  margin-bottom:12px;
-  display:flex;
-  align-items:flex-start;
-  gap:5px;
+.location {
+  color: #64748b;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
 }
 
-.distance{
-  color:#166534;
-  font-size:13px;
-  margin-bottom:13px;
-  display:flex;
-  gap:5px;
-  align-items:center;
+.distance {
+  color: #166534;
+  font-size: 13px;
+  margin-bottom: 13px;
+  display: flex;
+  gap: 5px;
+  align-items: center;
 }
 
-.rent{
-  font-size:23px;
-  font-weight:800;
-  margin-bottom:14px;
+.rent {
+  font-size: 23px;
+  font-weight: 800;
+  margin-bottom: 14px;
 }
 
-.rent small{
-  font-size:12px;
-  color:#64748b;
-  font-weight:500;
+.rent small {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
 }
 
-.not-available{
-  color:#64748b;
-  font-size:14px;
-  font-weight:600;
+.not-available {
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 600;
 }
 
-.info-row{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  margin-bottom:14px;
+.info-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
 }
 
-.info{
-  background:#f8fafc;
-  border:1px solid #e2e8f0;
-  padding:6px 9px;
-  border-radius:7px;
-  font-size:12px;
+.info {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 6px 9px;
+  border-radius: 7px;
+  font-size: 12px;
 }
 
-.rating-row{
-  display:flex;
-  gap:15px;
-  color:#64748b;
-  font-size:13px;
-  margin-bottom:15px;
+.rating-row {
+  display: flex;
+  gap: 15px;
+  color: #64748b;
+  font-size: 13px;
+  margin-bottom: 15px;
 }
 
-.amenities{
-  display:flex;
-  flex-wrap:wrap;
-  gap:7px;
-  margin-bottom:15px;
+.amenities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 15px;
 }
 
-.amenity{
-  font-size:12px;
-  background:#f0fdf4;
-  color:#166534;
-  padding:5px 8px;
-  border-radius:6px;
+.amenity {
+  font-size: 12px;
+  background: #f0fdf4;
+  color: #166534;
+  padding: 5px 8px;
+  border-radius: 6px;
 }
 
-.owner{
-  border-top:1px solid #e2e8f0;
-  padding-top:14px;
-  color:#475569;
-  font-size:13px;
+.owner {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 14px;
+  color: #475569;
+  font-size: 13px;
 }
 
-.owner div{
-  display:flex;
-  align-items:center;
-  gap:5px;
-  margin-top:6px;
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 15px;
+  flex-wrap: wrap;
 }
 
-.actions{
-  display:flex;
-  gap:8px;
-  margin-top:15px;
-  flex-wrap:wrap;
+.action-btn {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  padding: 8px 11px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  text-decoration: none;
+  color: #172033;
 }
 
-.action-btn{
-  border:1px solid #cbd5e1;
-  background:#fff;
-  padding:8px 11px;
-  border-radius:8px;
-  display:flex;
-  align-items:center;
-  gap:5px;
-  font-size:12px;
-  text-decoration:none;
-  color:#172033;
+.action-btn.edit {
+  color: #2563eb;
 }
 
-.action-btn.edit{
-  color:#2563eb;
+.action-btn.delete {
+  color: #dc2626;
 }
 
-.action-btn.delete{
-  color:#dc2626;
+/* NO PG BOX */
+
+.no-pg-box {
+  background: #fff;
+  border: 2px dashed #cbd5e1;
+  border-radius: 16px;
+  padding: 40px 25px;
+  text-align: center;
+}
+
+.no-pg-icon {
+  font-size: 42px;
+  margin-bottom: 8px;
+}
+
+.no-pg-box h3 {
+  margin: 5px 0 10px;
+  font-size: 23px;
+}
+
+.no-pg-box p {
+  color: #64748b;
+  margin: 7px auto;
+  max-width: 650px;
+  line-height: 1.5;
+}
+
+.map-help {
+  font-size: 13px;
+}
+
+.map-fallback-btn {
+  border: none;
+  background: #2563eb;
+  color: #fff;
+  padding: 13px 20px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  margin-top: 15px;
+}
+
+.map-fallback-btn:hover {
+  background: #1d4ed8;
+}
+
+.map-fallback-btn:disabled {
+  opacity: .6;
+  cursor: wait;
+}
+
+.map-warning {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  padding: 12px 15px;
+  border-radius: 9px;
+  margin-bottom: 20px;
+  font-size: 13px;
 }
 
 .empty,
-.error{
-  background:#fff;
-  border:1px solid #e2e8f0;
-  border-radius:14px;
-  padding:35px;
-  text-align:center;
+.error {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 35px;
+  text-align: center;
 }
 
-.error{
-  border-color:#fecaca;
-  background:#fff7f7;
+.error {
+  border-color: #fecaca;
+  background: #fff7f7;
 }
 
-footer{
-  margin-top:60px;
-  background:#172033;
-  color:#fff;
-  padding:30px 6%;
+footer {
+  margin-top: 60px;
+  background: #172033;
+  color: #fff;
+  padding: 30px 6%;
 }
 
-footer p{
-  color:#cbd5e1;
+footer p {
+  color: #cbd5e1;
 }
 
-.map-header{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:15px;
-  margin-bottom:15px;
+.modal-bg {
+  position: fixed;
+  inset: 0;
+  background: rgba(15,23,42,.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
 }
 
-.map-header h2{
-  margin:0 0 5px;
+.modal {
+  background: #fff;
+  width: 100%;
+  max-width: 850px;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 16px;
+  padding: 25px;
 }
 
-.map-header p{
-  margin:0;
-  color:#64748b;
-  font-size:13px;
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
 }
 
-.live-map{
-  width:100%;
-  height:430px;
-  border-radius:16px;
-  overflow:hidden;
-  border:1px solid #dbe1ea;
-  background:#e2e8f0;
-  box-shadow:0 8px 25px rgba(0,0,0,.08);
+.modal-header h2 {
+  margin: 0;
 }
 
-.live-map iframe{
-  width:100%;
-  height:100%;
-  border:0;
+.close-btn {
+  border: none;
+  background: #f1f5f9;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
 }
 
-.map-info{
-  margin-top:10px;
-  padding:12px;
-  border-radius:9px;
-  background:#ecfdf5;
-  color:#166534;
-  font-size:13px;
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2,1fr);
+  gap: 14px;
 }
 
-.modal-bg{
-  position:fixed;
-  inset:0;
-  background:rgba(15,23,42,.55);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:20px;
-  z-index:100;
+.checkboxes {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 10px;
+  margin-top: 20px;
 }
 
-.modal{
-  background:#fff;
-  width:100%;
-  max-width:850px;
-  max-height:90vh;
-  overflow-y:auto;
-  border-radius:16px;
-  padding:25px;
+.check {
+  padding: 10px;
+  background: #f8fafc;
+  border-radius: 8px;
+  font-size: 13px;
 }
 
-.modal-header{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  margin-bottom:20px;
+.check input {
+  margin-right: 7px;
 }
 
-.modal-header h2{
-  margin:0;
+.gps-form-btn {
+  margin-top: 16px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 10px 14px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
 }
 
-.close-btn{
-  border:none;
-  background:#f1f5f9;
-  width:36px;
-  height:36px;
-  border-radius:50%;
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
 }
 
-.form-grid{
-  display:grid;
-  grid-template-columns:repeat(2,1fr);
-  gap:14px;
+.cancel {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  padding: 11px 17px;
+  border-radius: 8px;
 }
 
-.checkboxes{
-  display:grid;
-  grid-template-columns:repeat(3,1fr);
-  gap:10px;
-  margin-top:20px;
+.save {
+  border: none;
+  background: #2563eb;
+  color: #fff;
+  padding: 11px 17px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 
-.check{
-  padding:10px;
-  background:#f8fafc;
-  border-radius:8px;
-  font-size:13px;
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(
+    135deg,
+    #2563eb,
+    #4f46e5,
+    #7c3aed
+  );
+  padding: 20px;
 }
 
-.check input{
-  margin-right:7px;
+.login-card {
+  width: 100%;
+  max-width: 430px;
+  background: #fff;
+  padding: 40px;
+  border-radius: 22px;
+  box-shadow: 0 25px 70px rgba(0,0,0,.25);
 }
 
-.gps-form-btn{
-  margin-top:16px;
-  border:1px solid #bfdbfe;
-  background:#eff6ff;
-  color:#1d4ed8;
-  padding:10px 14px;
-  border-radius:8px;
-  display:flex;
-  align-items:center;
-  gap:7px;
-  font-weight:700;
+.login-logo {
+  width: 70px;
+  height: 70px;
+  margin: 0 auto 20px;
+  border-radius: 18px;
+  background: #eff6ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 38px;
 }
 
-.form-actions{
-  display:flex;
-  justify-content:flex-end;
-  gap:10px;
-  margin-top:22px;
+.login-card h1 {
+  text-align: center;
+  margin: 0;
 }
 
-.cancel{
-  border:1px solid #cbd5e1;
-  background:#fff;
-  padding:11px 17px;
-  border-radius:8px;
+.login-card p {
+  text-align: center;
+  color: #64748b;
+  margin: 10px 0 28px;
 }
 
-.save{
-  border:none;
-  background:#2563eb;
-  color:#fff;
-  padding:11px 17px;
-  border-radius:8px;
-  display:flex;
-  align-items:center;
-  gap:7px;
+.login-label {
+  display: block;
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 7px;
 }
 
-.login-page{
-  min-height:100vh;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background:linear-gradient(135deg,#2563eb,#4f46e5,#7c3aed);
-  padding:20px;
+.login-input {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  outline: none;
+  font-size: 15px;
 }
 
-.login-card{
-  width:100%;
-  max-width:430px;
-  background:#fff;
-  padding:40px;
-  border-radius:22px;
-  box-shadow:0 25px 70px rgba(0,0,0,.25);
+.login-button {
+  width: 100%;
+  margin-top: 20px;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
 }
 
-.login-logo{
-  width:70px;
-  height:70px;
-  margin:0 auto 20px;
-  border-radius:18px;
-  background:#eff6ff;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-size:38px;
+.login-footer {
+  text-align: center;
+  color: #94a3b8;
+  font-size: 12px;
+  margin-top: 25px;
 }
 
-.login-card h1{
-  text-align:center;
-  margin:0;
-}
-
-.login-card p{
-  text-align:center;
-  color:#64748b;
-  margin:10px 0 28px;
-}
-
-.login-label{
-  display:block;
-  font-weight:700;
-  font-size:14px;
-  margin-bottom:7px;
-}
-
-.login-input{
-  width:100%;
-  padding:14px;
-  border:1px solid #cbd5e1;
-  border-radius:10px;
-  outline:none;
-  font-size:15px;
-}
-
-.login-button{
-  width:100%;
-  margin-top:20px;
-  padding:14px;
-  border:none;
-  border-radius:10px;
-  background:#2563eb;
-  color:#fff;
-  font-weight:800;
-  font-size:15px;
-}
-
-.login-footer{
-  text-align:center;
-  color:#94a3b8;
-  font-size:12px;
-  margin-top:25px;
-}
-
-@media(max-width:1000px){
-  .cards{
-    grid-template-columns:repeat(2,1fr);
+@media(max-width:1000px) {
+  .cards {
+    grid-template-columns: repeat(2,1fr);
   }
 
-  .categories{
-    grid-template-columns:repeat(3,1fr);
+  .categories {
+    grid-template-columns: repeat(3,1fr);
   }
 
-  .filters{
-    grid-template-columns:repeat(2,1fr);
+  .filters {
+    grid-template-columns: repeat(2,1fr);
   }
 }
 
-@media(max-width:650px){
-  .navbar{
-    padding:14px 4%;
+@media(max-width:650px) {
+  .navbar {
+    padding: 14px 4%;
   }
 
-  .navbar-right{
-    justify-content:flex-end;
+  .navbar-right {
+    justify-content: flex-end;
   }
 
-  .hero{
-    padding:40px 4%;
+  .hero {
+    padding: 40px 4%;
   }
 
-  .hero h1{
-    font-size:34px;
+  .hero h1 {
+    font-size: 34px;
   }
 
-  .section{
-    width:92%;
+  .section {
+    width: 92%;
   }
 
   .categories,
   .cards,
   .filters,
   .form-grid,
-  .checkboxes{
-    grid-template-columns:1fr;
+  .checkboxes {
+    grid-template-columns: 1fr;
   }
 
-  .search-box{
-    flex-direction:column;
+  .search-box {
+    flex-direction: column;
   }
 
   .gps-btn,
-  .search-btn{
-    padding:12px;
-    justify-content:center;
+  .search-btn {
+    padding: 12px;
+    justify-content: center;
   }
 
-  .map-header{
-    flex-direction:column;
-    align-items:flex-start;
+  .brand {
+    font-size: 20px;
   }
 
-  .live-map{
-    height:350px;
+  .navbar {
+    align-items: flex-start;
   }
 
-  .navbar{
-    position:relative;
+  .navbar-right {
+    width: 100%;
   }
 }
 `;
