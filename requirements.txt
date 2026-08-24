@@ -1,6 +1,7 @@
 fastapi
-uvicorn
+uvicorn[standard]
 sqlalchemy
-requests
-httpx
 pydantic
+httpx
+python-jose[cryptography]
+passlib[bcrypt]
