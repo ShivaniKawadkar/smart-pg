@@ -1,21 +1,23 @@
-from typing import Optional
-from urllib.parse import quote
+import os
 import math
-import requests
+import hashlib
+import secrets
+from typing import Optional
 
-from fastapi import FastAPI, Depends, HTTPException
+import httpx
+
+from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, EmailStr
 
 from sqlalchemy import (
     create_engine,
     Column,
     Integer,
     String,
-    Boolean,
     Float,
-    inspect,
-    text,
+    Boolean,
+    ForeignKey,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
@@ -24,11 +26,18 @@ from sqlalchemy.orm import declarative_base, sessionmaker, Session
 # DATABASE
 # =========================================================
 
-DATABASE_URL = "sqlite:///./pg.db"
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./pg.db")
+
+connect_args = {}
+
+if DATABASE_URL.startswith("sqlite"):
+    connect_args = {
+        "check_same_thread": False
+    }
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},
+    connect_args=connect_args,
 )
 
 SessionLocal = sessionmaker(
@@ -40,198 +49,217 @@ SessionLocal = sessionmaker(
 Base = declarative_base()
 
 
-class PG(Base):
-    __tablename__ = "pgs"
+# =========================================================
+# USER MODEL
+# =========================================================
+
+class UserTable(Base):
+    __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
 
-    name = Column(String, nullable=False, default="")
-    property_type = Column(String, nullable=False, default="PG")
-    pg_type = Column(String, nullable=False, default="Unisex")
-    location = Column(String, nullable=False, default="")
-    rent = Column(Integer, nullable=False, default=0)
+    name = Column(
+        String,
+        nullable=False
+    )
 
-    owner_name = Column(String, nullable=False, default="Owner")
-    owner_phone = Column(String, nullable=False, default="")
+    email = Column(
+        String,
+        unique=True,
+        index=True,
+        nullable=False
+    )
 
-    food_available = Column(Boolean, default=True)
-    food_type = Column(String, nullable=True)
-    food_rating = Column(Float, default=0)
+    password_hash = Column(
+        String,
+        nullable=False
+    )
 
-    cleaning_rating = Column(Float, default=0)
+    role = Column(
+        String,
+        default="user",
+        nullable=False
+    )
 
-    water_available = Column(Boolean, default=True)
-    wifi_available = Column(Boolean, default=True)
-    cctv_available = Column(Boolean, default=True)
+    token = Column(
+        String,
+        unique=True,
+        index=True,
+        nullable=True
+    )
 
-    latitude = Column(Float, nullable=True)
-    longitude = Column(Float, nullable=True)
 
-    ac_available = Column(Boolean, default=False)
-    geyser_available = Column(Boolean, default=False)
-    parking_available = Column(Boolean, default=False)
-    power_backup = Column(Boolean, default=False)
-    laundry_available = Column(Boolean, default=False)
-    security_available = Column(Boolean, default=False)
+# =========================================================
+# PROPERTY MODEL
+# =========================================================
 
-    hygiene_rating = Column(Float, default=0)
+class PGTable(Base):
+    __tablename__ = "pg"
 
-    room_type = Column(String, default="Single")
-    room_available = Column(Boolean, default=True)
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
 
-    attached_washroom = Column(Boolean, default=False)
-    common_washroom = Column(Boolean, default=True)
-    washroom_cleaning_rating = Column(Float, default=0)
+    owner_id = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=True
+    )
+
+    name = Column(
+        String,
+        nullable=False
+    )
+
+    property_type = Column(
+        String,
+        default="PG"
+    )
+
+    pg_type = Column(
+        String,
+        default="Unisex"
+    )
+
+    location = Column(
+        String,
+        index=True
+    )
+
+    rent = Column(
+        Float,
+        nullable=True
+    )
+
+    owner_name = Column(
+        String,
+        nullable=True
+    )
+
+    owner_phone = Column(
+        String,
+        nullable=True
+    )
+
+    food_available = Column(
+        Boolean,
+        default=False
+    )
+
+    food_type = Column(
+        String,
+        nullable=True
+    )
+
+    food_rating = Column(
+        Float,
+        default=0
+    )
+
+    cleaning_rating = Column(
+        Float,
+        default=0
+    )
+
+    water_available = Column(
+        Boolean,
+        default=True
+    )
+
+    wifi_available = Column(
+        Boolean,
+        default=False
+    )
+
+    cctv_available = Column(
+        Boolean,
+        default=False
+    )
+
+    latitude = Column(
+        Float,
+        nullable=True
+    )
+
+    longitude = Column(
+        Float,
+        nullable=True
+    )
+
+    ac_available = Column(
+        Boolean,
+        default=False
+    )
+
+    geyser_available = Column(
+        Boolean,
+        default=False
+    )
+
+    parking_available = Column(
+        Boolean,
+        default=False
+    )
+
+    power_backup = Column(
+        Boolean,
+        default=False
+    )
+
+    laundry_available = Column(
+        Boolean,
+        default=False
+    )
+
+    security_available = Column(
+        Boolean,
+        default=False
+    )
+
+    hygiene_rating = Column(
+        Float,
+        default=0
+    )
+
+    room_type = Column(
+        String,
+        nullable=True
+    )
+
+    room_available = Column(
+        Boolean,
+        default=True
+    )
+
+    attached_washroom = Column(
+        Boolean,
+        default=False
+    )
+
+    common_washroom = Column(
+        Boolean,
+        default=False
+    )
+
+    washroom_cleaning_rating = Column(
+        Float,
+        default=0
+    )
 
 
 Base.metadata.create_all(bind=engine)
 
 
 # =========================================================
-# SAFE SQLITE MIGRATION
-# =========================================================
-
-def migrate_sqlite():
-    inspector = inspect(engine)
-
-    if "pgs" not in inspector.get_table_names():
-        return
-
-    existing = {
-        column["name"]
-        for column in inspector.get_columns("pgs")
-    }
-
-    additions = {
-        "property_type": "VARCHAR DEFAULT 'PG'",
-        "latitude": "FLOAT",
-        "longitude": "FLOAT",
-        "ac_available": "BOOLEAN DEFAULT 0",
-        "geyser_available": "BOOLEAN DEFAULT 0",
-        "parking_available": "BOOLEAN DEFAULT 0",
-        "power_backup": "BOOLEAN DEFAULT 0",
-        "laundry_available": "BOOLEAN DEFAULT 0",
-        "security_available": "BOOLEAN DEFAULT 0",
-        "hygiene_rating": "FLOAT DEFAULT 0",
-        "room_type": "VARCHAR DEFAULT 'Single'",
-        "room_available": "BOOLEAN DEFAULT 1",
-        "attached_washroom": "BOOLEAN DEFAULT 0",
-        "common_washroom": "BOOLEAN DEFAULT 1",
-        "washroom_cleaning_rating": "FLOAT DEFAULT 0",
-    }
-
-    with engine.begin() as conn:
-        for name, definition in additions.items():
-            if name not in existing:
-                conn.execute(
-                    text(
-                        f'ALTER TABLE pgs ADD COLUMN "{name}" {definition}'
-                    )
-                )
-
-
-migrate_sqlite()
-
-
-# =========================================================
-# DEMO DATA
-# =========================================================
-
-def seed_demo_data():
-    db = SessionLocal()
-
-    try:
-        if db.query(PG).count() == 0:
-
-            demo = [
-                PG(
-                    name="Green View PG",
-                    property_type="PG",
-                    pg_type="Girls",
-                    location="HSR Layout, Bangalore",
-                    rent=8500,
-                    owner_name="Demo Owner",
-                    owner_phone="9000000001",
-                    food_available=True,
-                    food_type="Veg",
-                    food_rating=4.2,
-                    cleaning_rating=4.0,
-                    water_available=True,
-                    wifi_available=True,
-                    cctv_available=True,
-                    latitude=12.9116,
-                    longitude=77.6389,
-                    geyser_available=True,
-                    parking_available=True,
-                    security_available=True,
-                    room_type="Single",
-                ),
-
-                PG(
-                    name="City Comfort PG",
-                    property_type="PG",
-                    pg_type="Boys",
-                    location="Koramangala, Bangalore",
-                    rent=7500,
-                    owner_name="Demo Owner",
-                    owner_phone="9000000002",
-                    food_available=True,
-                    food_type="Non-Veg",
-                    food_rating=4.0,
-                    cleaning_rating=3.8,
-                    water_available=True,
-                    wifi_available=True,
-                    cctv_available=True,
-                    latitude=12.9352,
-                    longitude=77.6245,
-                    parking_available=True,
-                    power_backup=True,
-                    room_type="Double",
-                ),
-
-                PG(
-                    name="Smart Co-Living",
-                    property_type="Co-Living",
-                    pg_type="Unisex",
-                    location="Electronic City, Bangalore",
-                    rent=9000,
-                    owner_name="Demo Owner",
-                    owner_phone="9000000003",
-                    food_available=True,
-                    food_type="Veg",
-                    food_rating=4.4,
-                    cleaning_rating=4.3,
-                    water_available=True,
-                    wifi_available=True,
-                    cctv_available=True,
-                    latitude=12.8452,
-                    longitude=77.6602,
-                    ac_available=True,
-                    geyser_available=True,
-                    laundry_available=True,
-                    security_available=True,
-                    room_type="Single",
-                ),
-            ]
-
-            db.add_all(demo)
-            db.commit()
-
-    finally:
-        db.close()
-
-
-seed_demo_data()
-
-
-# =========================================================
-# FASTAPI
+# APP
 # =========================================================
 
 app = FastAPI(
     title="Smart PG API",
-    version="4.0.0",
-    description="Smart PG Management System",
+    version="8.0.0",
+    description="Smart PG India Wide Real Accommodation System",
 )
 
 
@@ -263,7 +291,70 @@ def get_db():
 
 
 # =========================================================
-# PYDANTIC MODELS
+# PASSWORD
+# =========================================================
+
+def hash_password(password: str) -> str:
+
+    salt = secrets.token_hex(16)
+
+    password_hash = hashlib.sha256(
+        (salt + password).encode("utf-8")
+    ).hexdigest()
+
+    return f"{salt}${password_hash}"
+
+
+def verify_password(
+    password: str,
+    stored: str
+) -> bool:
+
+    try:
+
+        salt, saved_hash = stored.split(
+            "$",
+            1
+        )
+
+        check_hash = hashlib.sha256(
+            (salt + password).encode("utf-8")
+        ).hexdigest()
+
+        return secrets.compare_digest(
+            check_hash,
+            saved_hash
+        )
+
+    except Exception:
+
+        return False
+
+
+# =========================================================
+# AUTH MODELS
+# =========================================================
+
+class RegisterModel(BaseModel):
+
+    name: str
+
+    email: EmailStr
+
+    password: str
+
+    role: str = "user"
+
+
+class LoginModel(BaseModel):
+
+    email: EmailStr
+
+    password: str
+
+
+# =========================================================
+# PROPERTY INPUT MODEL
 # =========================================================
 
 class PGCreate(BaseModel):
@@ -276,15 +367,15 @@ class PGCreate(BaseModel):
 
     location: str
 
-    rent: int = 0
+    rent: Optional[float] = None
 
-    owner_name: str = "Owner"
+    owner_name: Optional[str] = None
 
-    owner_phone: str = ""
+    owner_phone: Optional[str] = None
 
-    food_available: bool = True
+    food_available: bool = False
 
-    food_type: Optional[str] = "Veg"
+    food_type: Optional[str] = None
 
     food_rating: float = 0
 
@@ -292,9 +383,9 @@ class PGCreate(BaseModel):
 
     water_available: bool = True
 
-    wifi_available: bool = True
+    wifi_available: bool = False
 
-    cctv_available: bool = True
+    cctv_available: bool = False
 
     latitude: Optional[float] = None
 
@@ -314,28 +405,237 @@ class PGCreate(BaseModel):
 
     hygiene_rating: float = 0
 
-    room_type: str = "Single"
+    room_type: Optional[str] = None
 
     room_available: bool = True
 
     attached_washroom: bool = False
 
-    common_washroom: bool = True
+    common_washroom: bool = False
 
     washroom_cleaning_rating: float = 0
 
 
-class PGResponse(PGCreate):
+# =========================================================
+# AUTHENTICATION
+# =========================================================
 
-    id: int
+def get_current_user(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
 
-    model_config = ConfigDict(
-        from_attributes=True
+    if not authorization:
+
+        raise HTTPException(
+            status_code=401,
+            detail="Login required"
+        )
+
+    token = authorization.replace(
+        "Bearer ",
+        ""
+    ).strip()
+
+    if not token:
+
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid login token"
+        )
+
+    user = (
+        db.query(UserTable)
+        .filter(
+            UserTable.token == token
+        )
+        .first()
     )
+
+    if not user:
+
+        raise HTTPException(
+            status_code=401,
+            detail="Session expired. Please login again."
+        )
+
+    return user
+
+
+def require_owner(
+    user: UserTable = Depends(get_current_user),
+):
+
+    if user.role != "owner":
+
+        raise HTTPException(
+            status_code=403,
+            detail="Only property owners can perform this action"
+        )
+
+    return user
 
 
 # =========================================================
-# BASIC ROUTES
+# REGISTER
+# =========================================================
+
+@app.post("/auth/register")
+def register(
+    data: RegisterModel,
+    db: Session = Depends(get_db),
+):
+
+    email = str(data.email).lower().strip()
+
+    existing = (
+        db.query(UserTable)
+        .filter(
+            UserTable.email == email
+        )
+        .first()
+    )
+
+    if existing:
+
+        raise HTTPException(
+            status_code=400,
+            detail="Email already registered"
+        )
+
+    role = data.role.lower().strip()
+
+    if role not in ["user", "owner"]:
+        role = "user"
+
+    if len(data.password) < 4:
+
+        raise HTTPException(
+            status_code=400,
+            detail="Password must contain at least 4 characters"
+        )
+
+    user = UserTable(
+        name=data.name.strip(),
+        email=email,
+        password_hash=hash_password(
+            data.password
+        ),
+        role=role,
+    )
+
+    db.add(user)
+
+    db.commit()
+
+    db.refresh(user)
+
+    return {
+        "message": "Registration successful",
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+        }
+    }
+
+
+# =========================================================
+# LOGIN
+# =========================================================
+
+@app.post("/auth/login")
+def login(
+    data: LoginModel,
+    db: Session = Depends(get_db),
+):
+
+    email = str(data.email).lower().strip()
+
+    user = (
+        db.query(UserTable)
+        .filter(
+            UserTable.email == email
+        )
+        .first()
+    )
+
+    if not user:
+
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password"
+        )
+
+    if not verify_password(
+        data.password,
+        user.password_hash
+    ):
+
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password"
+        )
+
+    token = secrets.token_urlsafe(48)
+
+    user.token = token
+
+    db.commit()
+
+    db.refresh(user)
+
+    return {
+        "message": "Login successful",
+        "token": token,
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+        }
+    }
+
+
+# =========================================================
+# LOGOUT
+# =========================================================
+
+@app.post("/auth/logout")
+def logout(
+    user: UserTable = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+
+    user.token = None
+
+    db.commit()
+
+    return {
+        "message": "Logout successful"
+    }
+
+
+# =========================================================
+# CURRENT USER
+# =========================================================
+
+@app.get("/auth/me")
+def me(
+    user: UserTable = Depends(get_current_user),
+):
+
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role,
+    }
+
+
+# =========================================================
+# HOME
 # =========================================================
 
 @app.get("/")
@@ -343,232 +643,427 @@ def home():
 
     return {
         "message": "Smart PG API is running",
+        "version": "8.0.0",
+        "authentication": "ON",
+        "owner_system": "ON",
+        "real_india_search": "ON",
+        "openstreetmap": "ON",
         "docs": "/docs",
-        "status": "online",
-        "version": "4.0.0",
     }
 
+
+# =========================================================
+# HEALTH
+# =========================================================
 
 @app.get("/health")
 def health():
 
     return {
         "status": "healthy",
-        "service": "Smart PG API",
-        "version": "4.0.0",
+        "authentication": "online",
+        "real_search": "online",
     }
 
 
 # =========================================================
-# DATABASE PG ROUTES
+# DATABASE PROPERTY RESPONSE
 # =========================================================
 
-@app.get(
-    "/pg",
-    response_model=list[PGResponse]
-)
-def get_all_pg(
+def pg_to_dict(pg: PGTable):
+
+    google_maps_url = None
+    directions_url = None
+
+    if (
+        pg.latitude is not None
+        and pg.longitude is not None
+    ):
+
+        google_maps_url = (
+            "https://www.google.com/maps/search/"
+            f"?api=1&query={pg.latitude},{pg.longitude}"
+        )
+
+        directions_url = (
+            "https://www.google.com/maps/dir/"
+            f"?api=1&destination={pg.latitude},{pg.longitude}"
+        )
+
+    return {
+
+        "id": pg.id,
+
+        "owner_id": pg.owner_id,
+
+        "name": pg.name,
+
+        "property_type": pg.property_type,
+
+        "pg_type": pg.pg_type,
+
+        "location": pg.location,
+
+        "rent": pg.rent,
+
+        "owner_name": pg.owner_name,
+
+        "owner_phone": pg.owner_phone,
+
+        "food_available": pg.food_available,
+
+        "food_type": pg.food_type,
+
+        "food_rating": pg.food_rating,
+
+        "cleaning_rating": pg.cleaning_rating,
+
+        "water_available": pg.water_available,
+
+        "wifi_available": pg.wifi_available,
+
+        "cctv_available": pg.cctv_available,
+
+        "latitude": pg.latitude,
+
+        "longitude": pg.longitude,
+
+        "ac_available": pg.ac_available,
+
+        "geyser_available": pg.geyser_available,
+
+        "parking_available": pg.parking_available,
+
+        "power_backup": pg.power_backup,
+
+        "laundry_available": pg.laundry_available,
+
+        "security_available": pg.security_available,
+
+        "hygiene_rating": pg.hygiene_rating,
+
+        "room_type": pg.room_type,
+
+        "room_available": pg.room_available,
+
+        "attached_washroom": pg.attached_washroom,
+
+        "common_washroom": pg.common_washroom,
+
+        "washroom_cleaning_rating":
+            pg.washroom_cleaning_rating,
+
+        "source": "Smart PG Database",
+
+        "google_maps_url":
+            google_maps_url,
+
+        "directions_url":
+            directions_url,
+    }
+
+
+# =========================================================
+# CREATE PROPERTY
+# OWNER ONLY
+# =========================================================
+
+@app.post("/pg")
+def create_pg(
+    data: PGCreate,
+    owner: UserTable = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+
+    pg = PGTable(
+        owner_id=owner.id,
+        **data.model_dump()
+    )
+
+    db.add(pg)
+
+    db.commit()
+
+    db.refresh(pg)
+
+    return pg_to_dict(pg)
+
+
+# =========================================================
+# GET ALL DATABASE PROPERTIES
+# =========================================================
+
+@app.get("/pg")
+def get_pgs(
     location: Optional[str] = None,
     property_type: Optional[str] = None,
     pg_type: Optional[str] = None,
     food_type: Optional[str] = None,
-    max_rent: Optional[int] = None,
+    max_rent: Optional[float] = None,
     db: Session = Depends(get_db),
 ):
 
-    query = db.query(PG)
+    query = db.query(PGTable)
+
+    if property_type:
+
+        ptype = property_type.strip()
+
+        if ptype.lower() != "all":
+
+            query = query.filter(
+                PGTable.property_type.ilike(
+                    ptype
+                )
+            )
 
     if location:
-        query = query.filter(
-            PG.location.ilike(f"%{location}%")
-        )
 
-    if property_type and property_type.lower() != "all":
-        query = query.filter(
-            PG.property_type.ilike(property_type)
-        )
+        text = location.strip()
+
+        if text:
+
+            query = query.filter(
+                PGTable.location.ilike(
+                    f"%{text}%"
+                )
+            )
 
     if pg_type and pg_type.lower() != "all":
+
         query = query.filter(
-            PG.pg_type.ilike(pg_type)
+            PGTable.pg_type.ilike(
+                pg_type.strip()
+            )
         )
 
     if food_type and food_type.lower() != "all":
+
         query = query.filter(
-            PG.food_type.ilike(food_type)
+            PGTable.food_type.ilike(
+                f"%{food_type.strip()}%"
+            )
         )
 
     if max_rent is not None:
+
         query = query.filter(
-            PG.rent <= max_rent
+            PGTable.rent <= max_rent
         )
 
-    return query.order_by(
-        PG.id.desc()
-    ).all()
+    results = query.all()
+
+    return [
+        pg_to_dict(pg)
+        for pg in results
+    ]
 
 
 # =========================================================
-# ADD PG
+# OWNER PROPERTIES
 # =========================================================
 
-@app.post("/pg")
-def add_pg(
-    pg: PGCreate,
+@app.get("/owner/properties")
+def owner_properties(
+    owner: UserTable = Depends(require_owner),
     db: Session = Depends(get_db),
 ):
 
-    new_pg = PG(
-        **pg.model_dump()
+    properties = (
+        db.query(PGTable)
+        .filter(
+            PGTable.owner_id == owner.id
+        )
+        .all()
     )
 
-    db.add(new_pg)
-    db.commit()
-    db.refresh(new_pg)
-
-    return {
-        "message": "PG added successfully",
-        "id": new_pg.id,
-    }
+    return [
+        pg_to_dict(pg)
+        for pg in properties
+    ]
 
 
 # =========================================================
-# GET SINGLE PG
+# SINGLE PROPERTY
 # =========================================================
 
-@app.get(
-    "/pg/{pg_id}",
-    response_model=PGResponse
-)
+@app.get("/pg/{pg_id}")
 def get_pg(
     pg_id: int,
     db: Session = Depends(get_db),
 ):
 
     pg = (
-        db.query(PG)
-        .filter(PG.id == pg_id)
+        db.query(PGTable)
+        .filter(
+            PGTable.id == pg_id
+        )
         .first()
     )
 
     if not pg:
+
         raise HTTPException(
             status_code=404,
-            detail="PG not found"
+            detail="Property not found"
         )
 
-    return pg
+    return pg_to_dict(pg)
 
 
 # =========================================================
-# UPDATE PG
+# UPDATE PROPERTY
 # =========================================================
 
 @app.put("/pg/{pg_id}")
 def update_pg(
     pg_id: int,
-    pg_data: PGCreate,
+    data: PGCreate,
+    owner: UserTable = Depends(require_owner),
     db: Session = Depends(get_db),
 ):
 
     pg = (
-        db.query(PG)
-        .filter(PG.id == pg_id)
+        db.query(PGTable)
+        .filter(
+            PGTable.id == pg_id,
+            PGTable.owner_id == owner.id,
+        )
         .first()
     )
 
     if not pg:
+
         raise HTTPException(
             status_code=404,
-            detail="PG not found"
+            detail="Property not found or not owned by you"
         )
 
-    for key, value in pg_data.model_dump().items():
-        setattr(pg, key, value)
+    for key, value in data.model_dump().items():
+
+        setattr(
+            pg,
+            key,
+            value
+        )
 
     db.commit()
+
     db.refresh(pg)
 
-    return {
-        "message": "PG updated successfully",
-        "id": pg.id,
-    }
+    return pg_to_dict(pg)
 
 
 # =========================================================
-# DELETE PG
+# DELETE PROPERTY
 # =========================================================
 
 @app.delete("/pg/{pg_id}")
 def delete_pg(
     pg_id: int,
+    owner: UserTable = Depends(require_owner),
     db: Session = Depends(get_db),
 ):
 
     pg = (
-        db.query(PG)
-        .filter(PG.id == pg_id)
+        db.query(PGTable)
+        .filter(
+            PGTable.id == pg_id,
+            PGTable.owner_id == owner.id,
+        )
         .first()
     )
 
     if not pg:
+
         raise HTTPException(
             status_code=404,
-            detail="PG not found"
+            detail="Property not found or not owned by you"
         )
 
     db.delete(pg)
+
     db.commit()
 
     return {
-        "message": "PG deleted successfully",
-        "id": pg_id,
+        "message": "Property deleted successfully"
     }
 
 
 # =========================================================
-# LOCATION / NOMINATIM
+# NOMINATIM
 # =========================================================
 
+NOMINATIM_URL = (
+    "https://nominatim.openstreetmap.org"
+)
+
 HEADERS = {
-    "User-Agent": "SmartPG/4.0 student project"
+    "User-Agent":
+        "SmartPG/8.0 smartpgindia@gmail.com"
 }
 
 
-def geocode_location(location: str):
+async def geocode_location(
+    location: str,
+):
 
     try:
 
-        response = requests.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={
-                "q": location,
-                "format": "jsonv2",
-                "limit": 1,
-            },
+        async with httpx.AsyncClient(
+            timeout=30,
             headers=HEADERS,
-            timeout=8,
+            follow_redirects=True,
+        ) as client:
+
+            response = await client.get(
+                f"{NOMINATIM_URL}/search",
+                params={
+                    "q": f"{location}, India",
+                    "format": "json",
+                    "limit": 5,
+                    "countrycodes": "in",
+                    "addressdetails": 1,
+                },
+            )
+
+            response.raise_for_status()
+
+            data = response.json()
+
+            if not data:
+
+                return None
+
+            for item in data:
+
+                if (
+                    item.get("lat")
+                    and item.get("lon")
+                ):
+
+                    return {
+                        "latitude":
+                            float(item["lat"]),
+
+                        "longitude":
+                            float(item["lon"]),
+
+                        "display_name":
+                            item.get(
+                                "display_name",
+                                location
+                            ),
+                    }
+
+    except Exception as e:
+
+        print(
+            "GEOCODING ERROR:",
+            repr(e)
         )
 
-        response.raise_for_status()
-
-        data = response.json()
-
-        if not data:
-            return None
-
-        return (
-            float(data[0]["lat"]),
-            float(data[0]["lon"]),
-            data[0].get(
-                "display_name",
-                location
-            ),
-        )
-
-    except requests.RequestException:
-
-        return None
+    return None
 
 
 # =========================================================
@@ -576,48 +1071,62 @@ def geocode_location(location: str):
 # =========================================================
 
 @app.get("/reverse-location")
-def reverse_location(
+async def reverse_location(
     latitude: float,
     longitude: float,
 ):
 
     try:
 
-        response = requests.get(
-            "https://nominatim.openstreetmap.org/reverse",
-            params={
-                "lat": latitude,
-                "lon": longitude,
-                "format": "jsonv2",
-            },
+        async with httpx.AsyncClient(
+            timeout=30,
             headers=HEADERS,
-            timeout=8,
-        )
+            follow_redirects=True,
+        ) as client:
 
-        response.raise_for_status()
+            response = await client.get(
+                f"{NOMINATIM_URL}/reverse",
+                params={
+                    "lat": latitude,
+                    "lon": longitude,
+                    "format": "json",
+                    "addressdetails": 1,
+                },
+            )
 
-        data = response.json()
+            response.raise_for_status()
+
+            data = response.json()
+
+            return {
+                "display_name":
+                    data.get(
+                        "display_name",
+                        f"{latitude}, {longitude}"
+                    ),
+
+                "latitude": latitude,
+
+                "longitude": longitude,
+            }
+
+    except Exception:
 
         return {
-            "display_name": data.get(
-                "display_name",
-                "Current Location"
-            )
+            "display_name":
+                f"{latitude}, {longitude}",
+
+            "latitude": latitude,
+
+            "longitude": longitude,
         }
-
-    except requests.RequestException as exc:
-
-        raise HTTPException(
-            status_code=502,
-            detail=f"Location service error: {exc}",
-        )
 
 
 # =========================================================
 # DISTANCE
 # =========================================================
 
-def calculate_distance(
+def distance_km(
     lat1,
     lon1,
     lat2,
@@ -648,11 +1157,6 @@ def calculate_distance(
         math.sin(dl / 2) ** 2
     )
 
-    a = min(
-        1,
-        max(0, a)
-    )
-
     return (
         radius
         *
@@ -660,535 +1164,728 @@ def calculate_distance(
         *
         math.atan2(
             math.sqrt(a),
-            math.sqrt(1 - a),
+            math.sqrt(1 - a)
         )
     )
 
 
 # =========================================================
-# REAL OPENSTREETMAP SEARCH
+# OVERPASS SERVERS
 # =========================================================
 
-@app.get("/search-real-pg")
-def search_real_pg(
+OVERPASS_SERVERS = [
+
+    "https://overpass-api.de/api/interpreter",
+
+    "https://overpass.kumi.systems/api/interpreter",
+
+    "https://overpass.private.coffee/api/interpreter",
+]
+
+
+# =========================================================
+# OVERPASS QUERY
+# =========================================================
+
+def get_overpass_query(
+    lat,
+    lon,
+    radius,
+    category,
+):
+
+    category = (
+        category
+        .strip()
+        .lower()
+    )
+
+    if category == "pg":
+
+        filters = [
+
+            'nwr["tourism"="hostel"]',
+
+            'nwr["amenity"="hostel"]',
+
+            'nwr["tourism"="guest_house"]',
+
+            'nwr["name"~"PG|paying guest|hostel|boys hostel|girls hostel",i]',
+
+            'nwr["name"~"accommodation|residency|residence",i]',
+        ]
+
+    elif category == "hostel":
+
+        filters = [
+
+            'nwr["tourism"="hostel"]',
+
+            'nwr["amenity"="hostel"]',
+
+            'nwr["name"~"hostel|hostels",i]',
+        ]
+
+    elif category in [
+        "co-living",
+        "co living",
+        "coliving",
+    ]:
+
+        filters = [
+
+            'nwr["name"~"co-living|co living|coliving",i]',
+
+            'nwr["name"~"living",i]',
+
+            'nwr["amenity"="community_centre"]',
+
+            'nwr["name"~"residency|residence",i]',
+        ]
+
+    elif category == "flat":
+
+        filters = [
+
+            'nwr["building"="apartments"]',
+
+            'nwr["building"="residential"]',
+
+            'nwr["name"~"apartment|residency|residence|flat|homes",i]',
+        ]
+
+    else:
+
+        filters = [
+
+            'nwr["tourism"="hostel"]',
+
+            'nwr["amenity"="hostel"]',
+
+            'nwr["tourism"="guest_house"]',
+
+            'nwr["building"="apartments"]',
+
+            'nwr["amenity"="hotel"]',
+
+            'nwr["name"~"PG|hostel|paying guest|coliving|co-living",i]',
+        ]
+
+    parts = []
+
+    for item in filters:
+
+        parts.append(
+            f"""
+            {item}(
+                around:{radius},
+                {lat},
+                {lon}
+            );
+            """
+        )
+
+    return f"""
+    [out:json][timeout:90];
+
+    (
+        {''.join(parts)}
+    );
+
+    out center tags;
+    """
+
+
+# =========================================================
+# OSM CONVERTER
+# =========================================================
+
+def osm_to_result(
+    element,
+    category,
+):
+
+    tags = element.get(
+        "tags",
+        {}
+    )
+
+    lat = element.get("lat")
+
+    lon = element.get("lon")
+
+    if lat is None:
+
+        center = element.get(
+            "center",
+            {}
+        )
+
+        lat = center.get("lat")
+
+        lon = center.get("lon")
+
+    if (
+        lat is None
+        or lon is None
+    ):
+
+        return None
+
+    name = (
+        tags.get("name")
+        or tags.get("brand")
+        or f"{category} near location"
+    )
+
+    address_parts = []
+
+    for key in [
+        "addr:housenumber",
+        "addr:street",
+        "addr:suburb",
+        "addr:neighbourhood",
+        "addr:city",
+        "addr:district",
+        "addr:state",
+        "addr:postcode",
+    ]:
+
+        if tags.get(key):
+
+            address_parts.append(
+                tags[key]
+            )
+
+    address = ", ".join(
+        address_parts
+    )
+
+    google_maps_url = (
+        "https://www.google.com/maps/search/"
+        f"?api=1&query={lat},{lon}"
+    )
+
+    directions_url = (
+        "https://www.google.com/maps/dir/"
+        f"?api=1&destination={lat},{lon}"
+    )
+
+    gender = (
+        tags.get("gender")
+        or tags.get("female")
+        or "Unisex"
+    )
+
+    gender_text = str(
+        gender
+    ).lower()
+
+    if gender_text in [
+        "yes",
+        "female",
+        "girls",
+    ]:
+
+        gender = "Girls"
+
+    elif gender_text in [
+        "male",
+        "boys",
+    ]:
+
+        gender = "Boys"
+
+    else:
+
+        gender = "Unisex"
+
+    website = (
+        tags.get("website")
+        or tags.get("contact:website")
+    )
+
+    phone = (
+        tags.get("phone")
+        or tags.get("contact:phone")
+    )
+
+    return {
+
+        "id":
+            f"osm-{element.get('type')}-{element.get('id')}",
+
+        "name": name,
+
+        "property_type": category,
+
+        "pg_type": gender,
+
+        "location":
+            address
+            or tags.get(
+                "addr:full",
+                "Location available on map"
+            ),
+
+        "rent": None,
+
+        "owner_name": None,
+
+        "owner_phone": phone,
+
+        "food_available": False,
+
+        "food_type": None,
+
+        "food_rating": 0,
+
+        "cleaning_rating": 0,
+
+        "water_available": True,
+
+        "wifi_available": False,
+
+        "cctv_available": False,
+
+        "latitude": float(lat),
+
+        "longitude": float(lon),
+
+        "ac_available": False,
+
+        "geyser_available": False,
+
+        "parking_available": False,
+
+        "power_backup": False,
+
+        "laundry_available": False,
+
+        "security_available": False,
+
+        "hygiene_rating": 0,
+
+        "room_type": None,
+
+        "room_available": True,
+
+        "attached_washroom": False,
+
+        "common_washroom": False,
+
+        "washroom_cleaning_rating": 0,
+
+        "source": "OpenStreetMap",
+
+        "google_maps_url":
+            google_maps_url,
+
+        "directions_url":
+            directions_url,
+
+        "website": website,
+
+        "phone": phone,
+
+        "osm_type":
+            element.get("type"),
+
+        "osm_id":
+            element.get("id"),
+    }
+
+
+# =========================================================
+# REAL INDIA SEARCH
+# =========================================================
+
+@app.get("/search-real-accommodation")
+async def search_real_accommodation(
     location: str,
     property_type: str = "PG",
 ):
 
     location = location.strip()
 
+    property_type = property_type.strip()
+
     if not location:
 
-        raise HTTPException(
-            status_code=400,
-            detail="Location is required",
-        )
+        return []
 
     # -----------------------------------------------------
-    # GEOCODING
+    # GET REAL LOCATION COORDINATES
     # -----------------------------------------------------
 
-    geo = geocode_location(location)
+    geo = await geocode_location(
+        location
+    )
 
     if not geo:
 
-        return {
-            "location": location,
-            "count": 0,
-            "results": [],
-            "source": "OpenStreetMap",
-            "message": (
-                "Location not found or "
-                "map service is temporarily unavailable."
-            ),
-        }
+        return []
 
-    latitude, longitude, display_name = geo
+    lat = geo["latitude"]
+
+    lon = geo["longitude"]
 
     # -----------------------------------------------------
-    # PROPERTY TYPE
+    # SEARCH 15 KM
     # -----------------------------------------------------
 
-    wanted = (
-        property_type or "PG"
-    ).strip()
+    query = get_overpass_query(
+        lat,
+        lon,
+        15000,
+        property_type,
+    )
 
-    allowed = {
-        "PG",
-        "Hostel",
-        "Co-Living",
-        "Flat",
-        "All",
-    }
-
-    if wanted not in allowed:
-        wanted = "PG"
-
-    # Smaller radius = faster search
-    radius = 5000
+    elements = []
 
     # -----------------------------------------------------
-    # OSM SELECTORS
+    # TRY MULTIPLE OVERPASS SERVERS
     # -----------------------------------------------------
 
-    if wanted == "Hostel":
-
-        selectors = f"""
-        nwr(around:{radius},{latitude},{longitude})["tourism"="hostel"];
-        nwr(around:{radius},{latitude},{longitude})["amenity"="hostel"];
-        nwr(around:{radius},{latitude},{longitude})["tourism"="guest_house"];
-        """
-
-    elif wanted == "Co-Living":
-
-        selectors = f"""
-        nwr(around:{radius},{latitude},{longitude})["name"~"co.?living|coliving",i];
-        """
-
-    elif wanted == "Flat":
-
-        selectors = f"""
-        nwr(around:{radius},{latitude},{longitude})["building"="apartments"];
-        nwr(around:{radius},{latitude},{longitude})["name"~"apartment|residency|residential",i];
-        """
-
-    elif wanted == "All":
-
-        selectors = f"""
-        nwr(around:{radius},{latitude},{longitude})["tourism"="hostel"];
-        nwr(around:{radius},{latitude},{longitude})["amenity"="hostel"];
-        nwr(around:{radius},{latitude},{longitude})["tourism"="guest_house"];
-        nwr(around:{radius},{latitude},{longitude})["name"~"PG|P.G.|paying guest|hostel|co.?living|coliving|apartment|residency",i];
-        """
-
-    else:
-
-        selectors = f"""
-        nwr(around:{radius},{latitude},{longitude})["name"~"PG|P.G.|paying guest|paying-guest",i];
-        nwr(around:{radius},{latitude},{longitude})["tourism"="guest_house"];
-        nwr(around:{radius},{latitude},{longitude})["name"~"residency|residence|living|stay|homes",i];
-        """
-
-    # -----------------------------------------------------
-    # OVERPASS QUERY
-    # -----------------------------------------------------
-
-    query = f"""
-    [out:json][timeout:8];
-    (
-        {selectors}
-    );
-    out center tags;
-    """
-
-    # -----------------------------------------------------
-    # OVERPASS SERVERS
-    # -----------------------------------------------------
-
-    overpass_urls = [
-        "https://overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter",
-    ]
-
-    data = None
-
-    for url in overpass_urls:
+    for server in OVERPASS_SERVERS:
 
         try:
 
-            response = requests.post(
-                url,
-                data={
-                    "data": query
-                },
+            async with httpx.AsyncClient(
+                timeout=100,
                 headers=HEADERS,
-                timeout=10,
+                follow_redirects=True,
+            ) as client:
+
+                response = await client.post(
+                    server,
+                    content=query.encode(
+                        "utf-8"
+                    ),
+                )
+
+                response.raise_for_status()
+
+                data = response.json()
+
+                elements = data.get(
+                    "elements",
+                    []
+                )
+
+                if elements:
+
+                    print(
+                        "OVERPASS SUCCESS:",
+                        server,
+                        "RESULTS:",
+                        len(elements)
+                    )
+
+                    break
+
+        except Exception as e:
+
+            print(
+                "OVERPASS ERROR:",
+                server,
+                repr(e)
             )
-
-            response.raise_for_status()
-
-            data = response.json()
-
-            if data is not None:
-                break
-
-        except requests.RequestException:
 
             continue
 
     # -----------------------------------------------------
-    # NO RESPONSE
-    # -----------------------------------------------------
-
-    if data is None:
-
-        return {
-            "location": location,
-            "latitude": latitude,
-            "longitude": longitude,
-            "count": 0,
-            "results": [],
-            "source": "OpenStreetMap",
-            "message": (
-                "Map service is temporarily busy. "
-                "Please try again."
-            ),
-        }
-
-    # -----------------------------------------------------
-    # RESULTS
+    # CONVERT RESULTS
     # -----------------------------------------------------
 
     results = []
 
+    for element in elements:
+
+        result = osm_to_result(
+            element,
+            property_type,
+        )
+
+        if not result:
+
+            continue
+
+        result["distance_km"] = round(
+            distance_km(
+                lat,
+                lon,
+                result["latitude"],
+                result["longitude"],
+            ),
+            2
+        )
+
+        results.append(result)
+
+    # -----------------------------------------------------
+    # SORT BY DISTANCE
+    # -----------------------------------------------------
+
+    results.sort(
+        key=lambda x:
+            x.get(
+                "distance_km",
+                999999
+            )
+    )
+
+    # -----------------------------------------------------
+    # REMOVE DUPLICATES
+    # -----------------------------------------------------
+
+    unique = []
+
     seen = set()
 
-    for element in data.get(
-        "elements",
-        []
-    ):
-
-        tags = element.get(
-            "tags",
-            {}
-        )
-
-        name = (
-            tags.get("name")
-            or ""
-        ).strip()
-
-        if not name:
-            continue
-
-        lat = element.get("lat")
-
-        lon = element.get("lon")
-
-        if lat is None or lon is None:
-
-            center = element.get(
-                "center",
-                {}
-            )
-
-            lat = center.get("lat")
-
-            lon = center.get("lon")
-
-        if lat is None or lon is None:
-            continue
-
-        lat = float(lat)
-
-        lon = float(lon)
-
-        # -------------------------------------------------
-        # ADDRESS
-        # -------------------------------------------------
-
-        address_parts = [
-            tags.get("addr:housenumber"),
-            tags.get("addr:street"),
-            tags.get("addr:suburb"),
-            tags.get("addr:neighbourhood"),
-            tags.get("addr:city"),
-            tags.get("addr:postcode"),
-        ]
-
-        address = ", ".join(
-            str(x).strip()
-            for x in address_parts
-            if x
-        )
-
-        # -------------------------------------------------
-        # DUPLICATES
-        # -------------------------------------------------
+    for item in results:
 
         key = (
-            name.lower(),
-            round(lat, 5),
-            round(lon, 5),
+            str(
+                item["name"]
+            ).lower().strip(),
+
+            round(
+                item["latitude"],
+                4
+            ),
+
+            round(
+                item["longitude"],
+                4
+            ),
         )
 
         if key in seen:
+
             continue
 
         seen.add(key)
 
-        # -------------------------------------------------
-        # CATEGORY
-        # -------------------------------------------------
+        unique.append(item)
 
-        lower_name = name.lower()
+    return unique[:100]
 
-        tourism = (
-            tags.get("tourism")
-            or ""
-        ).lower()
 
-        amenity = (
-            tags.get("amenity")
-            or ""
-        ).lower()
+# =========================================================
+# SMART SEARCH
+# DATABASE + REAL OSM
+# =========================================================
 
-        if (
-            "hostel" in lower_name
-            or tourism == "hostel"
-            or amenity == "hostel"
-        ):
+@app.get("/smart-search")
+async def smart_search(
+    location: str,
+    property_type: str = "PG",
+    db: Session = Depends(get_db),
+):
 
-            detected_type = "Hostel"
+    location = location.strip()
 
-        elif (
-            "co-living" in lower_name
-            or "coliving" in lower_name
-            or "co living" in lower_name
-        ):
+    property_type = property_type.strip()
 
-            detected_type = "Co-Living"
+    if not location:
 
-        elif (
-            "flat" in lower_name
-            or "apartment" in lower_name
-        ):
+        return []
 
-            detected_type = "Flat"
+    # -----------------------------------------------------
+    # DATABASE RESULTS
+    # -----------------------------------------------------
 
-        elif tourism == "guest_house":
+    database_results = []
 
-            detected_type = "Hostel"
+    query = db.query(PGTable)
+
+    if property_type.lower() != "all":
+
+        query = query.filter(
+            PGTable.property_type.ilike(
+                property_type
+            )
+        )
+
+    query = query.filter(
+        PGTable.location.ilike(
+            f"%{location}%"
+        )
+    )
+
+    database_properties = query.all()
+
+    for pg in database_properties:
+
+        item = pg_to_dict(pg)
+
+        item["source"] = (
+            "Smart PG Database"
+        )
+
+        database_results.append(item)
+
+    # -----------------------------------------------------
+    # REAL OPENSTREETMAP RESULTS
+    # -----------------------------------------------------
+
+    real_results = []
+
+    try:
+
+        if property_type.lower() == "all":
+
+            categories = [
+                "PG",
+                "Hostel",
+                "Co-Living",
+                "Flat",
+            ]
 
         else:
 
-            detected_type = "PG"
+            categories = [
+                property_type
+            ]
 
-        # -------------------------------------------------
-        # IMAGE
-        # -------------------------------------------------
+        for category in categories:
 
-        image = (
-            tags.get("image")
-            or tags.get("image:url")
-            or tags.get("contact:image")
-            or ""
-        )
+            try:
 
-        # Wikimedia Commons
-        if (
-            not image
-            and tags.get(
-                "wikimedia_commons"
-            )
-        ):
-
-            commons = (
-                tags[
-                    "wikimedia_commons"
-                ]
-                .replace(
-                    "File:",
-                    ""
+                items = (
+                    await search_real_accommodation(
+                        location=location,
+                        property_type=category,
+                    )
                 )
-                .strip()
-                .replace(
-                    " ",
-                    "_"
+
+                real_results.extend(items)
+
+            except Exception as e:
+
+                print(
+                    "REAL SEARCH ERROR:",
+                    category,
+                    repr(e)
                 )
-            )
 
-            image = (
-                "https://commons.wikimedia.org/"
-                "wiki/Special:FilePath/"
-                + quote(commons)
-            )
+    except Exception as e:
 
-        # -------------------------------------------------
-        # WEBSITE
-        # -------------------------------------------------
-
-        website = (
-            tags.get("website")
-            or tags.get("contact:website")
-            or ""
-        )
-
-        # -------------------------------------------------
-        # PHONE
-        # -------------------------------------------------
-
-        phone = (
-            tags.get("phone")
-            or tags.get("contact:phone")
-            or ""
-        )
-
-        # -------------------------------------------------
-        # FOOD
-        # -------------------------------------------------
-
-        cuisine = (
-            tags.get("cuisine")
-            or ""
-        )
-
-        # -------------------------------------------------
-        # WIFI
-        # -------------------------------------------------
-
-        wifi = (
-            tags.get(
-                "internet_access"
-            ) == "wlan"
-        )
-
-        # -------------------------------------------------
-        # MAP URL
-        # -------------------------------------------------
-
-        map_url = (
-            "https://www.openstreetmap.org/"
-            f"?mlat={lat}"
-            f"&mlon={lon}"
-            f"#map=18/{lat}/{lon}"
-        )
-
-        # -------------------------------------------------
-        # DIRECTIONS
-        # -------------------------------------------------
-
-        directions_url = (
-            "https://www.google.com/maps/search/"
-            "?api=1"
-            f"&query={lat},{lon}"
-        )
-
-        # -------------------------------------------------
-        # DISTANCE
-        # -------------------------------------------------
-
-        distance = calculate_distance(
-            latitude,
-            longitude,
-            lat,
-            lon,
-        )
-
-        # -------------------------------------------------
-        # FINAL RESULT
-        # -------------------------------------------------
-
-        results.append(
-            {
-                "id": (
-                    f"osm-"
-                    f"{element.get('type')}-"
-                    f"{element.get('id')}"
-                ),
-
-                "name": name,
-
-                "property_type": detected_type,
-
-                "pg_type": "Unisex",
-
-                "location": (
-                    address
-                    or display_name
-                ),
-
-                "rent": None,
-
-                "owner_name":
-                    "OpenStreetMap listing",
-
-                "owner_phone":
-                    phone,
-
-                "food_available":
-                    bool(cuisine),
-
-                "food_type":
-                    cuisine
-                    or "Not specified",
-
-                "food_rating": 0,
-
-                "cleaning_rating": 0,
-
-                "water_available": False,
-
-                "wifi_available":
-                    wifi,
-
-                "cctv_available": False,
-
-                "latitude": lat,
-
-                "longitude": lon,
-
-                "website":
-                    website,
-
-                "image":
-                    image,
-
-                "source":
-                    "OpenStreetMap",
-
-                "distance_km":
-                    round(
-                        distance,
-                        2
-                    ),
-
-                "map_url":
-                    map_url,
-
-                "directions_url":
-                    directions_url,
-            }
+        print(
+            "SMART SEARCH ERROR:",
+            repr(e)
         )
 
     # -----------------------------------------------------
-    # SORT
+    # COMBINE DATABASE + REAL RESULTS
     # -----------------------------------------------------
 
-    results.sort(
-        key=lambda item:
-            item["distance_km"]
+    combined = []
+
+    seen = set()
+
+    for item in (
+        database_results
+        + real_results
+    ):
+
+        name = str(
+            item.get(
+                "name",
+                ""
+            )
+        ).lower().strip()
+
+        lat = item.get(
+            "latitude"
+        )
+
+        lon = item.get(
+            "longitude"
+        )
+
+        if lat is not None and lon is not None:
+
+            key = (
+                name,
+                round(
+                    float(lat),
+                    4
+                ),
+                round(
+                    float(lon),
+                    4
+                ),
+            )
+
+        else:
+
+            key = (
+                name,
+                str(
+                    item.get(
+                        "location",
+                        ""
+                    )
+                ).lower().strip(),
+            )
+
+        if key in seen:
+
+            continue
+
+        seen.add(key)
+
+        combined.append(item)
+
+    # -----------------------------------------------------
+    # DISTANCE SORT
+    # -----------------------------------------------------
+
+    geo = await geocode_location(
+        location
     )
 
-    # -----------------------------------------------------
-    # RESPONSE
-    # -----------------------------------------------------
+    if geo:
 
-    return {
-        "location": location,
+        search_lat = geo["latitude"]
 
-        "latitude":
-            latitude,
+        search_lon = geo["longitude"]
 
-        "longitude":
-            longitude,
+        for item in combined:
 
-        "count":
-            len(results),
+            if (
+                item.get("latitude")
+                is not None
+                and
+                item.get("longitude")
+                is not None
+            ):
 
-        "results":
-            results[:100],
+                item["distance_km"] = round(
+                    distance_km(
+                        search_lat,
+                        search_lon,
+                        float(
+                            item["latitude"]
+                        ),
+                        float(
+                            item["longitude"]
+                        ),
+                    ),
+                    2
+                )
 
-        "source":
-            "OpenStreetMap",
+        combined.sort(
+            key=lambda x:
+                x.get(
+                    "distance_km",
+                    999999
+                )
+        )
 
-        "message": (
-            "Real mapped accommodation loaded successfully."
-            if results
-            else
-            "No mapped accommodation found in this area."
-        ),
-    }
+    return combined[:100]
 
 
 # =========================================================
@@ -1204,25 +1901,33 @@ def nearby_pgs(
     db: Session = Depends(get_db),
 ):
 
+    query = db.query(PGTable)
+
+    if (
+        property_type
+        and property_type.lower() != "all"
+    ):
+
+        query = query.filter(
+            PGTable.property_type.ilike(
+                property_type
+            )
+        )
+
+    properties = query.all()
+
     results = []
 
-    for pg in db.query(PG).all():
+    for pg in properties:
 
         if (
             pg.latitude is None
             or pg.longitude is None
         ):
+
             continue
 
-        if (
-            property_type
-            and property_type.lower() != "all"
-            and pg.property_type.lower()
-            != property_type.lower()
-        ):
-            continue
-
-        distance = calculate_distance(
+        distance = distance_km(
             latitude,
             longitude,
             pg.latitude,
@@ -1231,72 +1936,173 @@ def nearby_pgs(
 
         if distance <= radius_km:
 
-            results.append(
-                {
-                    "id": pg.id,
-                    "name": pg.name,
-                    "property_type":
-                        pg.property_type,
-                    "pg_type":
-                        pg.pg_type,
-                    "location":
-                        pg.location,
-                    "rent":
-                        pg.rent,
-                    "latitude":
-                        pg.latitude,
-                    "longitude":
-                        pg.longitude,
-                    "distance_km":
-                        round(
-                            distance,
-                            2
-                        ),
-                }
+            item = pg_to_dict(pg)
+
+            item["distance_km"] = round(
+                distance,
+                2
             )
+
+            results.append(item)
 
     results.sort(
         key=lambda x:
             x["distance_km"]
     )
 
-    return {
-        "count":
-            len(results),
-
-        "results":
-            results[:200],
-    }
+    return results
 
 
 # =========================================================
-# NEARBY SEARCH
+# REAL NEARBY SEARCH
 # =========================================================
 
-@app.get("/nearby-pgs/search")
-def nearby_pg_search(
-    location: str,
-    radius_km: float = 10,
+@app.get("/nearby-real-accommodation")
+async def nearby_real_accommodation(
+    latitude: float,
+    longitude: float,
     property_type: str = "PG",
+    radius_km: int = 15,
 ):
 
-    return search_real_pg(
-        location=location,
-        property_type=property_type,
+    query = get_overpass_query(
+        latitude,
+        longitude,
+        radius_km * 1000,
+        property_type,
     )
 
+    elements = []
+
+    for server in OVERPASS_SERVERS:
+
+        try:
+
+            async with httpx.AsyncClient(
+                timeout=100,
+                headers=HEADERS,
+                follow_redirects=True,
+            ) as client:
+
+                response = await client.post(
+                    server,
+                    content=query.encode(
+                        "utf-8"
+                    ),
+                )
+
+                response.raise_for_status()
+
+                data = response.json()
+
+                elements = data.get(
+                    "elements",
+                    []
+                )
+
+                if elements:
+
+                    break
+
+        except Exception as e:
+
+            print(
+                "NEARBY REAL ERROR:",
+                repr(e)
+            )
+
+            continue
+
+    results = []
+
+    for element in elements:
+
+        item = osm_to_result(
+            element,
+            property_type
+        )
+
+        if not item:
+
+            continue
+
+        distance = distance_km(
+            latitude,
+            longitude,
+            item["latitude"],
+            item["longitude"],
+        )
+
+        item["distance_km"] = round(
+            distance,
+            2
+        )
+
+        results.append(item)
+
+    results.sort(
+        key=lambda x:
+            x["distance_km"]
+    )
+
+    return results[:100]
+
 
 # =========================================================
-# RUN LOCALLY
+# STARTUP
 # =========================================================
 
-if __name__ == "__main__":
+@app.on_event("startup")
+def startup():
 
-    import uvicorn
+    Base.metadata.create_all(
+        bind=engine
+    )
 
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
+    print(
+        "================================="
+    )
+
+    print(
+        "SMART PG API STARTED"
+    )
+
+    print(
+        "VERSION: 8.0.0"
+    )
+
+    print(
+        "AUTHENTICATION: ON"
+    )
+
+    print(
+        "USER LOGIN: ON"
+    )
+
+    print(
+        "OWNER LOGIN: ON"
+    )
+
+    print(
+        "OWNER PROPERTY CONTROL: ON"
+    )
+
+    print(
+        "REAL INDIA SEARCH: ON"
+    )
+
+    print(
+        "OPENSTREETMAP: ON"
+    )
+
+    print(
+        "NOMINATIM: ON"
+    )
+
+    print(
+        "OVERPASS: ON"
+    )
+
+    print(
+        "================================="
     )
